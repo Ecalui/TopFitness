@@ -49,8 +49,34 @@ main{padding-bottom:calc(40px + env(safe-area-inset-bottom,0px))}
 .chk input{min-height:0;width:22px;height:22px}
 @media(min-width:640px){.grid{grid-template-columns:repeat(4,1fr)}}
 @media(max-width:380px){main{padding:20px 14px 32px}h1{font-size:24px}.card{padding:14px 16px}}
+/* layout híbrido: barra em baixo (telemóvel), ícones (tablet), menu lateral (computador) */
+main{max-width:1100px}
+.btn{width:auto;padding:12px 22px;min-height:44px;border-radius:14px;font-size:16px}
+form .btn{display:block;margin-left:auto}
+.login{max-width:420px;margin:8vh auto}
+.login .btn{width:100%}
+form.card{max-width:520px}
+#ml,.list{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px;margin-bottom:12px}
+#ml .card,.list .card{margin:0}
+#nav{position:fixed;z-index:5;left:0;right:0;bottom:0;display:flex;justify-content:space-around;background:var(--card);border-top:1px solid var(--line);padding:6px 4px calc(6px + env(safe-area-inset-bottom,0px))}
+#nav button{flex:1;background:none;border:0;color:var(--mu);font:inherit;font-size:12px;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 4px;cursor:pointer;min-height:48px}
+#nav i{font-size:22px}
+#nav button[aria-current=page]{color:var(--lime);font-weight:700}
+body.has-nav main{padding-bottom:calc(96px + env(safe-area-inset-bottom,0px))}
+@media(min-width:640px){
+#nav{top:0;right:auto;bottom:0;width:76px;flex-direction:column;justify-content:flex-start;gap:6px;padding:16px 8px;border-top:0;border-right:1px solid var(--line)}
+body.has-nav{padding-left:76px}
+body.has-nav main{padding-bottom:40px}
+}
+@media(min-width:1024px){
+#nav{width:224px;padding:20px 12px}
+#nav button{flex:none;flex-direction:row;gap:12px;font-size:16px;padding:12px 14px;border-radius:14px;justify-content:flex-start}
+#nav button[aria-current=page]{background:var(--lime);color:#12161a}
+body.has-nav{padding-left:224px}
+}
 :focus-visible{outline:2px solid var(--lime);outline-offset:2px}
 </style>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.49.0/dist/tabler-icons.min.css">
 </head>
 <body>
 <main id="app"></main>
@@ -72,12 +98,13 @@ const MODES = {gestao:'Gestão', pt:'Personal Trainer', membro:'Meu perfil'};
 let S = {};
 
 function loginView(msg = '') {
-  app.innerHTML = `<h1>Entrar</h1>
+  document.body.classList.remove('has-nav');
+  app.innerHTML = `<div class="login"><h1>Entrar</h1>
     <p class="mu">Membros entram com o telefone. A equipa pode usar o email.</p>
     <label>Telefone ou email<input id="id" autocomplete="username"></label>
     <label>Palavra-passe<input id="pw" type="password" autocomplete="current-password"></label>
     <p class="err" role="alert">${esc(msg)}</p>
-    <button class="btn" id="go">Entrar</button>`;
+    <button class="btn" id="go">Entrar</button></div>`;
   $id('go').onclick = async () => {
     const v = $id('id').value.trim();
     const email = v.includes('@') ? v : norm(v) + '@membros.gym';
@@ -104,29 +131,30 @@ async function boot() {
   shell();
 }
 
+const NAV = {
+  gestao: [['dash', 'Painel', 'layout-dashboard'], ['planos', 'Planos', 'tags'], ['membros', 'Membros', 'users']],
+  pt: [['alunos', 'Alunos', 'users']],
+  membro: [['inicio', 'Início', 'home']]};
+
 function shell() {
+  S.sec = S.sec || {};
+  const items = NAV[S.mode], cur = S.sec[S.mode] || items[0][0];
   const sw = S.modes.length > 1
     ? `<nav class="modes" aria-label="Modo">${S.modes.map(m => `<button data-m="${m}" aria-pressed="${m === S.mode}">${MODES[m]}</button>`).join('')}</nav>` : '';
+  const nav = items.length > 1
+    ? `<nav id="nav" aria-label="Secções">${items.map(([k, l, i]) => `<button data-s="${k}"${k === cur ? ' aria-current="page"' : ''}><i class="ti ti-${i}" aria-hidden="true"></i><span>${l}</span></button>`).join('')}</nav>` : '';
+  document.body.classList.toggle('has-nav', !!nav);
   app.innerHTML = `<div class="row"><div><span class="mu">${esc(S.gym)}</span><h1>Olá, ${esc(S.name.split(' ')[0])}</h1></div>
-    <button class="btn ghost" id="out">Sair</button></div>${sw}<section id="view" aria-live="polite"></section>`;
+    <button class="btn ghost" id="out">Sair</button></div>${sw}<section id="view" aria-live="polite"></section>${nav}`;
   $id('out').onclick = async () => { await db.auth.signOut(); loginView(); };
   app.querySelectorAll('[data-m]').forEach(b => b.onclick = () => {
     S.mode = b.dataset.m; try { localStorage.setItem('mode', S.mode); } catch {} shell(); });
-  ({ gestao, pt, membro })[S.mode]($id('view'));
+  app.querySelectorAll('[data-s]').forEach(b => b.onclick = () => { S.sec[S.mode] = b.dataset.s; shell(); });
+  VIEWS[S.mode][cur]($id('view'));
 }
 
 const fail = e => `<p class="err">Não foi possível carregar: ${esc(e.message)}</p>`;
 const soon = t => `<p class="mu">A seguir neste modo: ${esc(t)}</p>`;
-
-const TABS = { dash: 'Dashboard', planos: 'Planos e preços', membros: 'Membros' };
-
-async function gestao(el) {
-  S.tab = S.tab || 'dash';
-  el.innerHTML = `<nav class="modes" aria-label="Gestão">${Object.entries(TABS).map(([k, v]) =>
-    `<button data-t="${k}" aria-pressed="${k === S.tab}">${v}</button>`).join('')}</nav><div id="tab"></div>`;
-  el.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { S.tab = b.dataset.t; gestao(el); });
-  ({ dash, planos, membros })[S.tab]($id('tab'));
-}
 
 async function dash(el) {
   const { data, error } = await db.rpc('dashboard_stats');
@@ -139,9 +167,9 @@ async function dash(el) {
 async function planos(el) {
   const { data, error } = await db.from('plans').select('*').order('price');
   if (error) return el.innerHTML = fail(error);
-  el.innerHTML = (data.length ? data.map(p => `<div class="card row"><div><strong>${esc(p.name)}</strong><br>
+  el.innerHTML = '<div class="list">' + (data.length ? data.map(p => `<div class="card row"><div><strong>${esc(p.name)}</strong><br>
       <span class="mu">${p.duration_days} dias${p.includes_pt ? ' · inclui PT' : ''}</span></div><strong>${kz(p.price)}</strong></div>`).join('')
-    : '<p class="mu">Ainda não há planos. Cria o primeiro abaixo.</p>')
+    : '<p class="mu">Ainda não há planos. Cria o primeiro abaixo.</p>') + '</div>'
     + `<form id="pf" class="card"><h3>Novo plano</h3>
       <label>Nome<input name="name" required></label>
       <label>Preço (Kz)<input name="price" type="number" min="0" required></label>
@@ -205,10 +233,10 @@ async function pt(el) {
   // filtro explícito: o dono também vê todos por ser gestor, mas aqui quer só os seus alunos
   const { data, error } = await db.from('member_status').select('*').eq('pt_id', S.uid).order('full_name');
   if (error) return el.innerHTML = fail(error);
-  el.innerHTML = `<h2>Os meus alunos</h2>` + (data.length
+  el.innerHTML = `<h2>Os meus alunos</h2><div class="list">` + (data.length
     ? data.map(m => `<div class="card row"><div><strong>${esc(m.full_name)}</strong><br><span class="mu">${esc(m.plan_name || 'Sem plano atribuído')}</span></div>
         <span class="tag ${m.status}">${STATE[m.status]}</span></div>`).join('')
-    : '<p class="mu">Ainda não tens alunos atribuídos.</p>')
+    : '<p class="mu">Ainda não tens alunos atribuídos.</p>') + '</div>'
     + soon('Biblioteca de exercícios, Novo plano de treino');
 }
 
@@ -222,6 +250,8 @@ async function membro(el) {
     <div class="card"><span class="mu">O teu código</span><div class="big">${esc(m.code)}</div></div>`
     + soon('Treino de hoje, Pagamentos');
 }
+
+const VIEWS = { gestao: { dash, planos, membros }, pt: { alunos: pt }, membro: { inicio: membro } };
 
 db.auth.getSession().then(({ data }) => data.session ? boot() : loginView());
 </script>
