@@ -29,6 +29,13 @@ input{width:100%;background:var(--card);color:var(--tx);border:1px solid var(--l
 .expiring,.none{background:#3d2d12;color:var(--warn)}
 .expired,.suspended{background:#3d1f1b;color:var(--bad)}
 .err{color:var(--bad);min-height:1.4em;margin:0 0 8px}
+select{width:100%;background:var(--card);color:var(--tx);border:1px solid var(--line);border-radius:16px;padding:14px 16px;font:inherit;margin:6px 0 14px}
+#fl{width:auto;margin:0}
+h3{margin:0 0 12px}
+.chk{display:flex;align-items:center;margin-bottom:14px}
+.chk input{width:auto;margin:0 10px 0 0}
+.ok{color:var(--lime)}
+[hidden]{display:none!important}
 :focus-visible{outline:2px solid var(--lime);outline-offset:2px}
 </style>
 </head>
@@ -44,6 +51,7 @@ const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const app = document.getElementById('app');
 const $id = x => document.getElementById(x);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const norm = v => { const d = v.replace(/\D/g, ''); return d.length > 9 && d.startsWith('244') ? d.slice(3) : d; };
 const kz = n => new Intl.NumberFormat('pt-AO').format(n) + ' Kz';
 const dm = d => d ? new Date(d + 'T00:00').toLocaleDateString('pt-PT', {day:'2-digit', month:'2-digit'}) : '—';
 const STATE = {active:'Ativo', expiring:'A expirar', expired:'Expirado', suspended:'Suspenso', none:'Sem plano'};
@@ -59,7 +67,7 @@ function loginView(msg = '') {
     <button class="btn" id="go">Entrar</button>`;
   $id('go').onclick = async () => {
     const v = $id('id').value.trim();
-    const email = v.includes('@') ? v : v.replace(/\D/g, '') + '@membros.gym';
+    const email = v.includes('@') ? v : norm(v) + '@membros.gym';
     const { error } = await db.auth.signInWithPassword({ email, password: $id('pw').value });
     error ? loginView('Não foi possível entrar (' + email + '): ' + error.message) : boot();
   };
@@ -97,13 +105,87 @@ function shell() {
 const fail = e => `<p class="err">Não foi possível carregar: ${esc(e.message)}</p>`;
 const soon = t => `<p class="mu">A seguir neste modo: ${esc(t)}</p>`;
 
+const TABS = { dash: 'Dashboard', planos: 'Planos e preços', membros: 'Membros' };
+
 async function gestao(el) {
+  S.tab = S.tab || 'dash';
+  el.innerHTML = `<nav class="modes" aria-label="Gestão">${Object.entries(TABS).map(([k, v]) =>
+    `<button data-t="${k}" aria-pressed="${k === S.tab}">${v}</button>`).join('')}</nav><div id="tab"></div>`;
+  el.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { S.tab = b.dataset.t; gestao(el); });
+  ({ dash, planos, membros })[S.tab]($id('tab'));
+}
+
+async function dash(el) {
   const { data, error } = await db.rpc('dashboard_stats');
   if (error) return el.innerHTML = fail(error);
   const c = (l, v) => `<div class="card"><span class="mu">${l}</span><div class="big">${v}</div></div>`;
   el.innerHTML = `<div class="grid">${c('Membros ativos', data.active)}${c('Receita do mês', kz(data.revenue_month))}
-    ${c('Expiram em 7 dias', data.expiring_7d)}${c('Entradas hoje', data.checkins_today)}</div>`
-    + soon('Membros, Mensalidades, Faturação, Receção');
+    ${c('Expiram em 7 dias', data.expiring_7d)}${c('Entradas hoje', data.checkins_today)}</div>`;
+}
+
+async function planos(el) {
+  const { data, error } = await db.from('plans').select('*').order('price');
+  if (error) return el.innerHTML = fail(error);
+  el.innerHTML = (data.length ? data.map(p => `<div class="card row"><div><strong>${esc(p.name)}</strong><br>
+      <span class="mu">${p.duration_days} dias${p.includes_pt ? ' · inclui PT' : ''}</span></div><strong>${kz(p.price)}</strong></div>`).join('')
+    : '<p class="mu">Ainda não há planos. Cria o primeiro abaixo.</p>')
+    + `<form id="pf" class="card"><h3>Novo plano</h3>
+      <label>Nome<input name="name" required></label>
+      <label>Preço (Kz)<input name="price" type="number" min="0" required></label>
+      <label>Duração (dias)<input name="days" type="number" min="1" value="30" required></label>
+      <label class="chk"><input name="pt" type="checkbox">Inclui Personal Trainer</label>
+      <p class="err" id="pe"></p><button class="btn">Guardar plano</button></form>`;
+  $id('pf').onsubmit = async e => {
+    e.preventDefault(); const d = Object.fromEntries(new FormData(e.target));
+    const { error } = await db.from('plans').insert({ name: d.name.trim(), price: +d.price, duration_days: +d.days, includes_pt: !!d.pt });
+    error ? $id('pe').textContent = error.message : planos(el);
+  };
+}
+
+// Cria a conta de login com um cliente temporário (não troca a sessão do staff) e depois a ficha via RPC
+async function criarMembro(d) {
+  const tmp = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
+  const phone = norm(d.phone);
+  const { data, error } = await tmp.auth.signUp({ email: phone + '@membros.gym', password: d.pw });
+  if (error) throw new Error(/already/i.test(error.message) ? 'Já existe um membro com este telefone.' : error.message);
+  const r = await db.rpc('register_member', { p_user: data.user.id, p_name: d.name.trim(), p_phone: phone, p_pt: d.pt || null });
+  if (r.error) throw r.error;
+}
+
+async function membros(el) {
+  const [m, p] = await Promise.all([
+    db.from('member_status').select('*').order('full_name'),
+    db.from('user_roles').select('user_id, profiles(full_name)').eq('role', 'pt')]);
+  if (m.error) return el.innerHTML = fail(m.error);
+  const flash = S.flash ? `<p class="ok" role="status">${esc(S.flash)}</p>` : ''; S.flash = '';
+  el.innerHTML = `${flash}<div class="row"><select id="fl" aria-label="Filtro"><option value="all">Todos</option><option value="active">Ativos</option>
+      <option value="expired">Expirados</option><option value="suspended">Suspensos</option></select>
+      <button class="btn ghost" id="nm">Novo membro</button></div>
+    <input id="q" placeholder="Nome, telefone ou código" aria-label="Pesquisar"><div id="ml"></div>
+    <form id="mf" class="card" hidden><h3>Novo membro</h3>
+      <label>Nome<input name="name" required></label>
+      <label>Telefone<input name="phone" inputmode="tel" required></label>
+      <label>Palavra-passe inicial<input name="pw" minlength="6" required></label>
+      <label>Personal Trainer<select name="pt"><option value="">Sem PT</option>
+        ${(p.data || []).map(x => `<option value="${x.user_id}">${esc(x.profiles?.full_name)}</option>`).join('')}</select></label>
+      <p class="err" id="me"></p><button class="btn">Criar membro</button></form>`;
+  const draw = () => {
+    const f = $id('fl').value, q = $id('q').value.toLowerCase();
+    const rows = m.data.filter(x => (f === 'all' || (f === 'active' ? ['active', 'expiring'].includes(x.status) : x.status === f))
+      && `${x.full_name} ${x.phone} ${x.code}`.toLowerCase().includes(q));
+    $id('ml').innerHTML = rows.length ? rows.map(x => `<div class="card row"><div><strong>${esc(x.full_name)}</strong><br>
+      <span class="mu">${esc(x.phone || '')} · ${esc(x.plan_name || 'Sem plano')} · expira ${dm(x.end_date)} · código ${esc(x.code)}</span></div>
+      <span class="tag ${x.status}">${STATE[x.status]}</span></div>`).join('') : '<p class="mu">Nenhum membro encontrado.</p>';
+  };
+  $id('fl').onchange = $id('q').oninput = draw;
+  $id('nm').onclick = () => { $id('mf').hidden = !$id('mf').hidden; };
+  $id('mf').onsubmit = async e => {
+    e.preventDefault(); const d = Object.fromEntries(new FormData(e.target)), btn = e.submitter;
+    btn.disabled = true; $id('me').textContent = '';
+    try { await criarMembro(d); S.flash = `Membro criado. Entra com o telefone ${norm(d.phone)} e a palavra-passe inicial.`; membros(el); }
+    catch (err) { $id('me').textContent = err.message; btn.disabled = false; }
+  };
+  draw();
 }
 
 async function pt(el) {
