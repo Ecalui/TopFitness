@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="pt">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#12161a">
+<title>GymApp</title>
+<style>
+:root{--bg:#12161a;--card:#1f2327;--line:#363c42;--tx:#f2f4f0;--mu:#9aa3a8;--lime:#c8f533;--warn:#f5b84a;--bad:#ff7a6b}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.4 system-ui,"Segoe UI",Roboto,sans-serif}
+main{max-width:720px;margin:0 auto;padding:24px 20px 40px}
+h1{font-size:28px;margin:4px 0 16px}
+label{display:block;color:var(--mu)}
+input{width:100%;background:var(--card);color:var(--tx);border:1px solid var(--line);border-radius:16px;padding:14px 16px;font:inherit;margin:6px 0 14px}
+.card{background:var(--card);border-radius:20px;padding:16px 20px;margin-bottom:12px}
+.mu{color:var(--mu)}
+.btn{width:100%;background:var(--lime);color:#12161a;border:0;border-radius:18px;padding:16px;font-family:inherit;font-size:17px;font-weight:700;cursor:pointer}
+.btn.ghost{background:none;color:var(--tx);border:1px solid var(--line);font-weight:400;width:auto;padding:10px 16px;font-size:16px}
+.modes{display:flex;gap:8px;overflow-x:auto;margin:0 0 20px}
+.modes button{flex:none;background:none;color:var(--tx);border:1px solid var(--line);border-radius:999px;padding:10px 18px;font:inherit;cursor:pointer}
+.modes button[aria-pressed=true]{background:var(--lime);color:#12161a;border-color:var(--lime);font-weight:700}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:12px}
+.grid .card{margin:0}
+.big{font-size:28px;font-weight:700}
+.row{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.tag{border-radius:999px;padding:4px 12px;font-size:14px;white-space:nowrap}
+.active{background:#2c3a12;color:var(--lime)}
+.expiring,.none{background:#3d2d12;color:var(--warn)}
+.expired,.suspended{background:#3d1f1b;color:var(--bad)}
+.err{color:var(--bad);min-height:1.4em;margin:0 0 8px}
+:focus-visible{outline:2px solid var(--lime);outline-offset:2px}
+</style>
+</head>
+<body>
+<main id="app"></main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.min.js"></script>
+<script>
+// Só a chave ANON (pública) vai aqui. A service_role nunca entra neste ficheiro.
+const SUPABASE_URL = 'https://yplkebdlirzilaqsatjf.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_GfU3heVCzbaJfWou0fGHog_QiezkqU2';
+
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const app = document.getElementById('app');
+const $id = x => document.getElementById(x);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const kz = n => new Intl.NumberFormat('pt-AO').format(n) + ' Kz';
+const dm = d => d ? new Date(d + 'T00:00').toLocaleDateString('pt-PT', {day:'2-digit', month:'2-digit'}) : '—';
+const STATE = {active:'Ativo', expiring:'A expirar', expired:'Expirado', suspended:'Suspenso', none:'Sem plano'};
+const MODES = {gestao:'Gestão', pt:'Personal Trainer', membro:'Meu perfil'};
+let S = {};
+
+function loginView(msg = '') {
+  app.innerHTML = `<h1>Entrar</h1>
+    <p class="mu">Membros entram com o telefone. A equipa pode usar o email.</p>
+    <label>Telefone ou email<input id="id" autocomplete="username"></label>
+    <label>Palavra-passe<input id="pw" type="password" autocomplete="current-password"></label>
+    <p class="err" role="alert">${esc(msg)}</p>
+    <button class="btn" id="go">Entrar</button>`;
+  $id('go').onclick = async () => {
+    const v = $id('id').value.trim();
+    const email = v.includes('@') ? v : v.replace(/\D/g, '') + '@membros.gym';
+    const { error } = await db.auth.signInWithPassword({ email, password: $id('pw').value });
+    error ? loginView('Telefone ou palavra-passe incorretos.') : boot();
+  };
+}
+
+async function boot() {
+  const { data: { user } } = await db.auth.getUser();
+  if (!user) return loginView();
+  const [p, r, g] = await Promise.all([
+    db.from('profiles').select('full_name').eq('id', user.id).maybeSingle(),
+    db.from('user_roles').select('role').eq('user_id', user.id),
+    db.from('gyms').select('name').limit(1).maybeSingle()]);
+  const roles = (r.data || []).map(x => x.role), has = x => roles.includes(x);
+  const modes = [];
+  if (has('owner') || has('admin') || has('receptionist')) modes.push('gestao');
+  if (has('owner') || has('pt')) modes.push('pt');
+  if (has('member')) modes.push('membro');
+  if (!modes.length) { await db.auth.signOut(); return loginView('Esta conta ainda não tem acesso. Fala com a receção.'); }
+  let last = null; try { last = localStorage.getItem('mode'); } catch {}
+  S = { uid: user.id, name: p.data?.full_name || '', gym: g.data?.name || 'Ginásio', modes, mode: modes.includes(last) ? last : modes[0] };
+  shell();
+}
+
+function shell() {
+  const sw = S.modes.length > 1
+    ? `<nav class="modes" aria-label="Modo">${S.modes.map(m => `<button data-m="${m}" aria-pressed="${m === S.mode}">${MODES[m]}</button>`).join('')}</nav>` : '';
+  app.innerHTML = `<div class="row"><div><span class="mu">${esc(S.gym)}</span><h1>Olá, ${esc(S.name.split(' ')[0])}</h1></div>
+    <button class="btn ghost" id="out">Sair</button></div>${sw}<section id="view" aria-live="polite"></section>`;
+  $id('out').onclick = async () => { await db.auth.signOut(); loginView(); };
+  app.querySelectorAll('[data-m]').forEach(b => b.onclick = () => {
+    S.mode = b.dataset.m; try { localStorage.setItem('mode', S.mode); } catch {} shell(); });
+  ({ gestao, pt, membro })[S.mode]($id('view'));
+}
+
+const fail = e => `<p class="err">Não foi possível carregar: ${esc(e.message)}</p>`;
+const soon = t => `<p class="mu">A seguir neste modo: ${esc(t)}</p>`;
+
+async function gestao(el) {
+  const { data, error } = await db.rpc('dashboard_stats');
+  if (error) return el.innerHTML = fail(error);
+  const c = (l, v) => `<div class="card"><span class="mu">${l}</span><div class="big">${v}</div></div>`;
+  el.innerHTML = `<div class="grid">${c('Membros ativos', data.active)}${c('Receita do mês', kz(data.revenue_month))}
+    ${c('Expiram em 7 dias', data.expiring_7d)}${c('Entradas hoje', data.checkins_today)}</div>`
+    + soon('Membros, Mensalidades, Faturação, Receção');
+}
+
+async function pt(el) {
+  // filtro explícito: o dono também vê todos por ser gestor, mas aqui quer só os seus alunos
+  const { data, error } = await db.from('member_status').select('*').eq('pt_id', S.uid).order('full_name');
+  if (error) return el.innerHTML = fail(error);
+  el.innerHTML = `<h2>Os meus alunos</h2>` + (data.length
+    ? data.map(m => `<div class="card row"><div><strong>${esc(m.full_name)}</strong><br><span class="mu">${esc(m.plan_name || 'Sem plano atribuído')}</span></div>
+        <span class="tag ${m.status}">${STATE[m.status]}</span></div>`).join('')
+    : '<p class="mu">Ainda não tens alunos atribuídos.</p>')
+    + soon('Biblioteca de exercícios, Novo plano de treino');
+}
+
+async function membro(el) {
+  const { data: m, error } = await db.from('member_status').select('*').eq('profile_id', S.uid).maybeSingle();
+  if (error) return el.innerHTML = fail(error);
+  if (!m) return el.innerHTML = '<p class="mu">Ainda não tens ficha de membro.</p>';
+  el.innerHTML = `<div class="card"><span class="mu">Mensalidade</span>
+      <div class="big"><span class="tag ${m.status}">${STATE[m.status]}</span></div>
+      <span class="mu">${esc(m.plan_name || 'Sem plano')} · renova em ${dm(m.end_date)}</span></div>
+    <div class="card"><span class="mu">O teu código</span><div class="big">${esc(m.code)}</div></div>`
+    + soon('Treino de hoje, Pagamentos');
+}
+
+db.auth.getSession().then(({ data }) => data.session ? boot() : loginView());
+</script>
+</body>
+</html>
