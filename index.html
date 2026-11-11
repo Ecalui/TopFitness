@@ -61,7 +61,7 @@ function loginView(msg = '') {
     const v = $id('id').value.trim();
     const email = v.includes('@') ? v : v.replace(/\D/g, '') + '@membros.gym';
     const { error } = await db.auth.signInWithPassword({ email, password: $id('pw').value });
-    error ? loginView('Telefone ou palavra-passe incorretos.') : boot();
+    error ? loginView('Não foi possível entrar (' + email + '): ' + error.message) : boot();
   };
 }
 
