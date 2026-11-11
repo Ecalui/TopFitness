@@ -36,6 +36,19 @@ h3{margin:0 0 12px}
 .chk input{width:auto;margin:0 10px 0 0}
 .ok{color:var(--lime)}
 [hidden]{display:none!important}
+/* mobile */
+:root{color-scheme:dark}
+html{-webkit-text-size-adjust:100%}
+body{-webkit-tap-highlight-color:transparent}
+main{padding-bottom:calc(40px + env(safe-area-inset-bottom,0px))}
+.row>div{min-width:0;overflow-wrap:anywhere}
+.big{font-size:clamp(20px,6.5vw,28px);overflow-wrap:anywhere}
+.modes{scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.modes::-webkit-scrollbar{display:none}
+.btn,.modes button,select,input{min-height:48px}
+.chk input{min-height:0;width:22px;height:22px}
+@media(min-width:640px){.grid{grid-template-columns:repeat(4,1fr)}}
+@media(max-width:380px){main{padding:20px 14px 32px}h1{font-size:24px}.card{padding:14px 16px}}
 :focus-visible{outline:2px solid var(--lime);outline-offset:2px}
 </style>
 </head>
