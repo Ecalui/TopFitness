@@ -74,6 +74,9 @@ body.has-nav main{padding-bottom:40px}
 #nav button[aria-current=page]{background:var(--lime);color:#12161a}
 body.has-nav{padding-left:224px}
 }
+.kv{padding:10px 0;border-bottom:1px solid var(--line)}
+@media(min-width:640px){.grid.g3{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media print{.no-print,#nav{display:none!important}body,body.has-nav{background:#fff;color:#000;padding:0!important}.card{background:#fff;color:#000;border:1px solid #999}.mu{color:#444}h2{color:#000}}
 :focus-visible{outline:2px solid var(--lime);outline-offset:2px}
 </style>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.49.0/dist/tabler-icons.min.css">
@@ -132,7 +135,7 @@ async function boot() {
 }
 
 const NAV = {
-  gestao: [['dash', 'Painel', 'layout-dashboard'], ['planos', 'Planos', 'tags'], ['membros', 'Membros', 'users']],
+  gestao: [['dash', 'Painel', 'layout-dashboard'], ['planos', 'Planos', 'tags'], ['membros', 'Membros', 'users'], ['faturacao', 'Faturação', 'receipt']],
   pt: [['alunos', 'Alunos', 'users']],
   membro: [['inicio', 'Início', 'home']]};
 
@@ -140,16 +143,16 @@ function shell() {
   S.sec = S.sec || {};
   const items = NAV[S.mode], cur = S.sec[S.mode] || items[0][0];
   const sw = S.modes.length > 1
-    ? `<nav class="modes" aria-label="Modo">${S.modes.map(m => `<button data-m="${m}" aria-pressed="${m === S.mode}">${MODES[m]}</button>`).join('')}</nav>` : '';
+    ? `<nav class="modes no-print" aria-label="Modo">${S.modes.map(m => `<button data-m="${m}" aria-pressed="${m === S.mode}">${MODES[m]}</button>`).join('')}</nav>` : '';
   const nav = items.length > 1
     ? `<nav id="nav" aria-label="Secções">${items.map(([k, l, i]) => `<button data-s="${k}"${k === cur ? ' aria-current="page"' : ''}><i class="ti ti-${i}" aria-hidden="true"></i><span>${l}</span></button>`).join('')}</nav>` : '';
   document.body.classList.toggle('has-nav', !!nav);
-  app.innerHTML = `<div class="row"><div><span class="mu">${esc(S.gym)}</span><h1>Olá, ${esc(S.name.split(' ')[0])}</h1></div>
+  app.innerHTML = `<div class="row no-print"><div><span class="mu">${esc(S.gym)}</span><h1>Olá, ${esc(S.name.split(' ')[0])}</h1></div>
     <button class="btn ghost" id="out">Sair</button></div>${sw}<section id="view" aria-live="polite"></section>${nav}`;
   $id('out').onclick = async () => { await db.auth.signOut(); loginView(); };
   app.querySelectorAll('[data-m]').forEach(b => b.onclick = () => {
-    S.mode = b.dataset.m; try { localStorage.setItem('mode', S.mode); } catch {} shell(); });
-  app.querySelectorAll('[data-s]').forEach(b => b.onclick = () => { S.sec[S.mode] = b.dataset.s; shell(); });
+    S.recibo = null; S.mode = b.dataset.m; try { localStorage.setItem('mode', S.mode); } catch {} shell(); });
+  app.querySelectorAll('[data-s]').forEach(b => b.onclick = () => { S.recibo = null; S.sec[S.mode] = b.dataset.s; shell(); });
   VIEWS[S.mode][cur]($id('view'));
 }
 
@@ -162,6 +165,57 @@ async function dash(el) {
   const c = (l, v) => `<div class="card"><span class="mu">${l}</span><div class="big">${v}</div></div>`;
   el.innerHTML = `<div class="grid">${c('Membros ativos', data.active)}${c('Receita do mês', kz(data.revenue_month))}
     ${c('Expiram em 7 dias', data.expiring_7d)}${c('Entradas hoje', data.checkins_today)}</div>`;
+}
+
+const METODO = { cash: 'Numerário', transfer: 'Transferência', multicaixa: 'Multicaixa Express' };
+const dh = t => new Date(t).toLocaleString('pt-PT', { timeZone: 'Africa/Luanda', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+const ym = t => new Date(t).toLocaleDateString('sv-SE', { timeZone: 'Africa/Luanda' }).slice(0, 7);
+const PSEL = 'id, receipt_no, amount, method, paid_at, members(profiles(full_name)), plans(name)';
+const nome = p => p.members?.profiles?.full_name || '—';
+const rno = p => 'Recibo n.º ' + String(p.receipt_no).padStart(4, '0');
+
+async function faturacao(el) {
+  if (S.recibo) return recibo(el);
+  const [pay, m, pl] = await Promise.all([
+    db.from('payments').select(PSEL, { count: 'exact' }).order('paid_at', { ascending: false }).limit(200),
+    db.from('member_status').select('member_id, full_name, phone, status').order('full_name'),
+    db.from('plans').select('*').eq('active', true).order('price')]);
+  const e = pay.error || m.error || pl.error; if (e) return el.innerHTML = fail(e);
+  const recebido = pay.data.filter(p => ym(p.paid_at) === ym(new Date())).reduce((s, p) => s + +p.amount, 0);
+  const c = (l, v) => `<div class="card"><span class="mu">${l}</span><div class="big">${v}</div></div>`;
+  const pre = S.prefill; S.prefill = null;
+  el.innerHTML = `<div class="grid g3">${c('Recebido no mês', kz(recebido))}${c('Membros em atraso', m.data.filter(x => x.status === 'expired').length)}${c('Recibos emitidos', pay.count ?? pay.data.length)}</div>
+    <form id="pf2" class="card"><h3>Registar pagamento</h3>
+      <label>Membro<select name="m" required><option value="">Escolher…</option>${m.data.map(x => `<option value="${x.member_id}"${x.member_id === pre ? ' selected' : ''}>${esc(x.full_name)} · ${esc(x.phone || '')}</option>`).join('')}</select></label>
+      <label>Plano<select name="p" required><option value="">Escolher…</option>${pl.data.map(x => `<option value="${x.id}" data-price="${x.price}">${esc(x.name)} · ${kz(x.price)}</option>`).join('')}</select></label>
+      <label>Método<select name="t">${Object.entries(METODO).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select></label>
+      <label>Valor (Kz)<input name="a" type="number" min="0" required></label>
+      <p class="err" id="fe"></p><button class="btn">Registar e emitir recibo</button></form>
+    <h2>Pagamentos recentes</h2>
+    <div class="list" id="pl">${pay.data.length ? pay.data.slice(0, 30).map(p => `<div class="card row"><div><strong>${rno(p)}</strong> · ${esc(nome(p))}<br>
+      <span class="mu">${esc(p.plans?.name || '')} · ${METODO[p.method]} · ${dh(p.paid_at)}</span></div>
+      <div style="text-align:right"><strong>${kz(p.amount)}</strong><br><button class="btn ghost" data-v="${p.id}">Ver recibo</button></div></div>`).join('')
+      : '<p class="mu">Ainda não há pagamentos.</p>'}</div>`;
+  const F = $id('pf2').elements;
+  F.p.onchange = () => { F.a.value = F.p.selectedOptions[0]?.dataset.price || ''; };
+  $id('pl').onclick = ev => { const b = ev.target.closest('[data-v]'); if (b) { S.recibo = b.dataset.v; faturacao(el); } };
+  $id('pf2').onsubmit = async ev => {
+    ev.preventDefault(); const btn = ev.submitter; btn.disabled = true; $id('fe').textContent = '';
+    const { data, error } = await db.rpc('register_payment', { p_member: F.m.value, p_plan: F.p.value, p_method: F.t.value, p_amount: +F.a.value });
+    if (error) { $id('fe').textContent = error.message; btn.disabled = false; } else { S.recibo = data.id; faturacao(el); }
+  };
+}
+
+async function recibo(el) {
+  const { data: p, error } = await db.from('payments').select(PSEL).eq('id', S.recibo).single();
+  if (error) { S.recibo = null; return el.innerHTML = fail(error); }
+  const k = (a, b) => `<div class="row kv"><span class="mu">${a}</span><strong>${esc(b)}</strong></div>`;
+  el.innerHTML = `<div class="card" id="rec"><h2>${esc(S.gym)}</h2><p class="mu">${rno(p)}</p>
+      ${k('Membro', nome(p))}${k('Plano', p.plans?.name || '—')}${k('Método', METODO[p.method])}${k('Data', dh(p.paid_at))}${k('Valor', kz(p.amount))}
+      <p class="mu">Recibo interno, sem valor fiscal.</p></div>
+    <div class="row no-print"><button class="btn ghost" id="vb">Voltar</button><button class="btn" id="pr">Imprimir ou guardar PDF</button></div>`;
+  $id('vb').onclick = () => { S.recibo = null; faturacao(el); };
+  $id('pr').onclick = () => window.print();
 }
 
 async function planos(el) {
@@ -216,9 +270,10 @@ async function membros(el) {
       && `${x.full_name} ${x.phone} ${x.code}`.toLowerCase().includes(q));
     $id('ml').innerHTML = rows.length ? rows.map(x => `<div class="card row"><div><strong>${esc(x.full_name)}</strong><br>
       <span class="mu">${esc(x.phone || '')} · ${esc(x.plan_name || 'Sem plano')} · expira ${dm(x.end_date)} · código ${esc(x.code)}</span></div>
-      <span class="tag ${x.status}">${STATE[x.status]}</span></div>`).join('') : '<p class="mu">Nenhum membro encontrado.</p>';
+      <div style="display:grid;gap:6px;justify-items:end"><span class="tag ${x.status}">${STATE[x.status]}</span><button class="btn ghost" data-r="${x.member_id}">Renovar</button></div></div>`).join('') : '<p class="mu">Nenhum membro encontrado.</p>';
   };
   $id('fl').onchange = $id('q').oninput = draw;
+  $id('ml').onclick = ev => { const b = ev.target.closest('[data-r]'); if (b) { S.prefill = b.dataset.r; S.sec.gestao = 'faturacao'; shell(); } };
   $id('nm').onclick = () => { $id('mf').hidden = !$id('mf').hidden; };
   $id('mf').onsubmit = async e => {
     e.preventDefault(); const d = Object.fromEntries(new FormData(e.target)), btn = e.submitter;
@@ -251,7 +306,7 @@ async function membro(el) {
     + soon('Treino de hoje, Pagamentos');
 }
 
-const VIEWS = { gestao: { dash, planos, membros }, pt: { alunos: pt }, membro: { inicio: membro } };
+const VIEWS = { gestao: { dash, planos, membros, faturacao }, pt: { alunos: pt }, membro: { inicio: membro } };
 
 db.auth.getSession().then(({ data }) => data.session ? boot() : loginView());
 </script>
