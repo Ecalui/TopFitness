@@ -77,6 +77,11 @@ body.has-nav{padding-left:224px}
 .kv{padding:10px 0;border-bottom:1px solid var(--line)}
 @media(min-width:640px){.grid.g3{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media print{.no-print,#nav{display:none!important}body,body.has-nav{background:#fff;color:#000;padding:0!important}.card{background:#fff;color:#000;border:1px solid #999}.mu{color:#444}h2{color:#000}}
+.sr{display:flex;align-items:center;gap:6px}
+.sr input{width:64px;min-height:44px;margin:0;text-align:center}
+.sr .btn{padding:8px 14px}
+details.card summary{cursor:pointer}
+details ul{margin:8px 0;padding-left:20px}
 :focus-visible{outline:2px solid var(--lime);outline-offset:2px}
 </style>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.49.0/dist/tabler-icons.min.css">
@@ -130,13 +135,13 @@ async function boot() {
   if (has('member')) modes.push('membro');
   if (!modes.length) { await db.auth.signOut(); return loginView('Esta conta ainda não tem acesso. Fala com a receção.'); }
   let last = null; try { last = localStorage.getItem('mode'); } catch {}
-  S = { uid: user.id, name: p.data?.full_name || '', gym: g.data?.name || 'Ginásio', modes, mode: modes.includes(last) ? last : modes[0] };
+  S = { roles, uid: user.id, name: p.data?.full_name || '', gym: g.data?.name || 'Ginásio', modes, mode: modes.includes(last) ? last : modes[0] };
   shell();
 }
 
 const NAV = {
   gestao: [['dash', 'Painel', 'layout-dashboard'], ['planos', 'Planos', 'tags'], ['membros', 'Membros', 'users'], ['faturacao', 'Faturação', 'receipt']],
-  pt: [['alunos', 'Alunos', 'users']],
+  pt: [['alunos', 'Alunos', 'users'], ['exercicios', 'Exercícios', 'barbell'], ['treinos', 'Treinos', 'clipboard-list']],
   membro: [['inicio', 'Início', 'home']]};
 
 function shell() {
@@ -151,8 +156,8 @@ function shell() {
     <button class="btn ghost" id="out">Sair</button></div>${sw}<section id="view" aria-live="polite"></section>${nav}`;
   $id('out').onclick = async () => { await db.auth.signOut(); loginView(); };
   app.querySelectorAll('[data-m]').forEach(b => b.onclick = () => {
-    S.recibo = null; S.mode = b.dataset.m; try { localStorage.setItem('mode', S.mode); } catch {} shell(); });
-  app.querySelectorAll('[data-s]').forEach(b => b.onclick = () => { S.recibo = null; S.sec[S.mode] = b.dataset.s; shell(); });
+    S.recibo = null; S.novo = false; B = null; S.mode = b.dataset.m; try { localStorage.setItem('mode', S.mode); } catch {} shell(); });
+  app.querySelectorAll('[data-s]').forEach(b => b.onclick = () => { S.recibo = null; S.novo = false; B = null; S.sec[S.mode] = b.dataset.s; shell(); });
   VIEWS[S.mode][cur]($id('view'));
 }
 
@@ -284,6 +289,109 @@ async function membros(el) {
   draw();
 }
 
+const GRUPOS = ['Peito', 'Costas', 'Pernas', 'Ombros', 'Braços', 'Abdómen', 'Cardio'];
+const ok = r => { if (r.error) throw r.error; return r.data; };
+let B = null;
+
+async function exercicios(el) {
+  const { data, error } = await db.from('exercises').select('*').order('muscle_group').order('name');
+  if (error) return el.innerHTML = fail(error);
+  const g = S.eg || 'Todos';
+  const rows = data.filter(x => g === 'Todos' || x.muscle_group === g);
+  el.innerHTML = `<nav class="modes">${['Todos', ...GRUPOS].map(x => `<button data-g="${x}" aria-pressed="${x === g}">${x}</button>`).join('')}</nav>
+    <div class="list">${rows.length ? rows.map(x => `<div class="card row"><div><strong>${esc(x.name)}</strong><br><span class="mu">${esc(x.muscle_group)}</span></div>
+      ${/^https?:\/\//.test(x.video_url || '') ? `<a href="${esc(x.video_url)}" target="_blank" rel="noopener">Ver vídeo</a>` : ''}</div>`).join('') : '<p class="mu">Nenhum exercício neste grupo.</p>'}</div>
+    <form id="xf" class="card"><h3>Novo exercício</h3>
+      <label>Nome<input name="name" required></label>
+      <label>Grupo muscular<select name="g">${GRUPOS.map(x => `<option>${x}</option>`).join('')}</select></label>
+      <label>Link do vídeo (opcional)<input name="v" type="url" placeholder="https://"></label>
+      <p class="err" id="xe"></p><button class="btn">Guardar exercício</button></form>`;
+  el.querySelector('.modes').onclick = ev => { const b = ev.target.closest('[data-g]'); if (b) { S.eg = b.dataset.g; exercicios(el); } };
+  $id('xf').onsubmit = async ev => {
+    ev.preventDefault(); const d = Object.fromEntries(new FormData(ev.target));
+    const { error } = await db.from('exercises').insert({ name: d.name.trim(), muscle_group: d.g, video_url: d.v || null });
+    error ? $id('xe').textContent = error.message : exercicios(el);
+  };
+}
+
+async function treinos(el) {
+  if (S.novo) return novoPlano(el);
+  const { data, error } = await db.from('workout_plans')
+    .select('id, name, active, members(profiles!profile_id(full_name)), workout_days(label, position, workout_items(sets, reps, position, exercises(name)))')
+    .order('created_at', { ascending: false });
+  if (error) return el.innerHTML = fail(error);
+  const by = (a, b) => a.position - b.position;
+  el.innerHTML = `<div class="row" style="margin-bottom:12px"><h2 style="margin:0">Planos de treino</h2><button class="btn" id="np">Novo plano</button></div>
+    <div class="list">${data.length ? data.map(p => `<details class="card"><summary><strong>${esc(p.name)}</strong> · ${esc(p.members?.profiles?.full_name || '—')}
+      <span class="tag ${p.active ? 'active' : 'none'}">${p.active ? 'Ativo' : 'Anterior'}</span></summary>
+      ${p.workout_days.sort(by).map(d => `<p><strong>Treino ${esc(d.label)}</strong></p><ul>${d.workout_items.sort(by).map(i =>
+        `<li>${esc(i.exercises?.name)} · ${i.sets} × ${i.reps}</li>`).join('')}</ul>`).join('')}</details>`).join('')
+      : '<p class="mu">Ainda não há planos de treino.</p>'}</div>`;
+  $id('np').onclick = () => { S.novo = true; B = null; treinos(el); };
+}
+
+async function novoPlano(el) {
+  const mgr = S.roles.includes('owner') || S.roles.includes('admin');
+  let al = db.from('member_status').select('member_id, full_name').order('full_name');
+  if (!mgr) al = al.eq('pt_id', S.uid);
+  const [a, x] = await Promise.all([al, db.from('exercises').select('*').order('name')]);
+  if (a.error || x.error) return el.innerHTML = fail(a.error || x.error);
+  B = B || { mid: '', name: '', days: [{ label: 'A', items: [] }], cur: 0, grp: 'Todos' };
+  bld(el, { alunos: a.data, exs: x.data });
+}
+
+function bld(el, { alunos, exs }) {
+  const d = B.days[B.cur], rows = exs.filter(e => B.grp === 'Todos' || e.muscle_group === B.grp);
+  el.innerHTML = `<form class="card" id="bf"><h3>Novo plano de treino</h3>
+      <label>Aluno<select id="ba"><option value="">Escolher…</option>${alunos.map(m => `<option value="${m.member_id}"${m.member_id === B.mid ? ' selected' : ''}>${esc(m.full_name)}</option>`).join('')}</select></label>
+      <label>Nome do plano<input id="bn" value="${esc(B.name)}" placeholder="Ex.: Hipertrofia ABC"></label>
+      <nav class="modes">${B.days.map((y, i) => `<button type="button" data-d="${i}" aria-pressed="${i === B.cur}">Treino ${y.label}</button>`).join('')}<button type="button" id="bad">+ Treino</button></nav>
+      ${d.items.length ? d.items.map((it, i) => `<div class="card row"><div><strong>${esc(it.ex.name)}</strong><br><span class="mu">${esc(it.ex.muscle_group)}</span></div>
+        <div class="sr"><input data-s="${i}" type="number" min="1" value="${it.sets}" aria-label="Séries"> × <input data-r="${i}" type="number" min="1" value="${it.reps}" aria-label="Repetições">
+        <button type="button" class="btn ghost" data-x="${i}" aria-label="Remover">×</button></div></div>`).join('') : '<p class="mu">Sem exercícios neste treino. Adiciona da biblioteca abaixo.</p>'}
+      <p class="err" id="be"></p><button class="btn">Guardar e atribuir</button>
+      <button type="button" class="btn ghost" id="bc" style="margin-top:8px">Cancelar</button></form>
+    <h3>Biblioteca</h3><nav class="modes">${['Todos', ...GRUPOS].map(g => `<button data-g="${g}" aria-pressed="${g === B.grp}">${g}</button>`).join('')}</nav>
+    <div class="list">${rows.map(e => `<div class="card row"><div><strong>${esc(e.name)}</strong><br><span class="mu">${esc(e.muscle_group)}</span></div>
+      <button class="btn" data-a="${e.id}" aria-label="Adicionar ${esc(e.name)}">+</button></div>`).join('') || '<p class="mu">Biblioteca vazia. Cria exercícios no separador Exercícios.</p>'}</div>`;
+  el.onclick = ev => {
+    const t = ev.target.closest('button'); if (!t) return; const D = t.dataset;
+    if (t.id === 'bc') { S.novo = false; B = null; return treinos(el); }
+    if (D.d != null) B.cur = +D.d;
+    else if (t.id === 'bad') { B.days.push({ label: String.fromCharCode(65 + B.days.length), items: [] }); B.cur = B.days.length - 1; }
+    else if (D.g) B.grp = D.g;
+    else if (D.a) d.items.push({ ex: exs.find(e => e.id === D.a), sets: 3, reps: 12 });
+    else if (D.x != null) d.items.splice(+D.x, 1);
+    else return;
+    bld(el, { alunos, exs });
+  };
+  el.oninput = ev => {
+    const t = ev.target, D = t.dataset;
+    if (t.id === 'bn') B.name = t.value; else if (t.id === 'ba') B.mid = t.value;
+    else if (D.s != null) d.items[+D.s].sets = +t.value; else if (D.r != null) d.items[+D.r].reps = +t.value;
+  };
+  $id('bf').onsubmit = async ev => {
+    ev.preventDefault(); const err = m => { $id('be').textContent = m; };
+    const days = B.days.filter(y => y.items.length);
+    if (!B.mid) return err('Escolhe o aluno.');
+    if (!B.name.trim()) return err('Dá um nome ao plano.');
+    if (!days.length) return err('Adiciona pelo menos um exercício.');
+    ev.submitter.disabled = true;
+    try { await guardarPlano(days); S.novo = false; B = null; treinos(el); }
+    catch (e) { err(e.message); ev.submitter.disabled = false; }
+  };
+}
+
+async function guardarPlano(days) {
+  const pl = ok(await db.from('workout_plans').insert({ member_id: B.mid, pt_id: S.uid, name: B.name.trim() }).select().single());
+  try {
+    const ds = ok(await db.from('workout_days').insert(days.map((y, i) => ({ plan_id: pl.id, label: y.label, position: i }))).select());
+    const items = days.flatMap((y, i) => y.items.map((it, j) => ({ day_id: ds.find(z => z.position === i).id, exercise_id: it.ex.id, sets: it.sets, reps: it.reps, position: j })));
+    ok(await db.from('workout_items').insert(items));
+  } catch (e) { await db.from('workout_plans').delete().eq('id', pl.id); throw e; }
+  await db.from('workout_plans').update({ active: false }).eq('member_id', B.mid).neq('id', pl.id);
+}
+
 async function pt(el) {
   // filtro explícito: o dono também vê todos por ser gestor, mas aqui quer só os seus alunos
   const { data, error } = await db.from('member_status').select('*').eq('pt_id', S.uid).order('full_name');
@@ -291,8 +399,7 @@ async function pt(el) {
   el.innerHTML = `<h2>Os meus alunos</h2><div class="list">` + (data.length
     ? data.map(m => `<div class="card row"><div><strong>${esc(m.full_name)}</strong><br><span class="mu">${esc(m.plan_name || 'Sem plano atribuído')}</span></div>
         <span class="tag ${m.status}">${STATE[m.status]}</span></div>`).join('')
-    : '<p class="mu">Ainda não tens alunos atribuídos.</p>') + '</div>'
-    + soon('Biblioteca de exercícios, Novo plano de treino');
+    : '<p class="mu">Ainda não tens alunos atribuídos.</p>') + '</div>';
 }
 
 async function membro(el) {
@@ -306,7 +413,7 @@ async function membro(el) {
     + soon('Treino de hoje, Pagamentos');
 }
 
-const VIEWS = { gestao: { dash, planos, membros, faturacao }, pt: { alunos: pt }, membro: { inicio: membro } };
+const VIEWS = { gestao: { dash, planos, membros, faturacao }, pt: { alunos: pt, exercicios, treinos }, membro: { inicio: membro } };
 
 db.auth.getSession().then(({ data }) => data.session ? boot() : loginView());
 </script>
