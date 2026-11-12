@@ -74,6 +74,7 @@ body.has-nav main{padding-bottom:40px}
 #nav button[aria-current=page]{background:var(--lime);color:#12161a}
 body.has-nav{padding-left:224px}
 }
+.row .btn{white-space:nowrap}
 .kv{padding:10px 0;border-bottom:1px solid var(--line)}
 @media(min-width:640px){.grid.g3{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media print{.no-print,#nav{display:none!important}body,body.has-nav{background:#fff;color:#000;padding:0!important}.card{background:#fff;color:#000;border:1px solid #999}.mu{color:#444}h2{color:#000}}
@@ -82,6 +83,8 @@ body.has-nav{padding-left:224px}
 .sr .btn{padding:8px 14px}
 details.card summary{cursor:pointer}
 details ul{margin:8px 0;padding-left:20px}
+.grid.g2{grid-template-columns:1fr}
+@media(min-width:640px){.grid.g2{grid-template-columns:repeat(2,minmax(0,1fr))}#nav button{flex:none}}
 :focus-visible{outline:2px solid var(--lime);outline-offset:2px}
 </style>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.49.0/dist/tabler-icons.min.css">
@@ -115,6 +118,7 @@ function loginView(msg = '') {
     <button class="btn" id="go">Entrar</button></div>`;
   $id('go').onclick = async () => {
     const v = $id('id').value.trim();
+    if (!v.includes('@') && /[^\d\s+()-]/.test(v)) return loginView('Escreve só o número de telefone (ex.: 990000011) ou o email, não o nome.');
     const email = v.includes('@') ? v : norm(v) + '@membros.gym';
     const { error } = await db.auth.signInWithPassword({ email, password: $id('pw').value });
     error ? loginView('Não foi possível entrar (' + email + '): ' + error.message) : boot();
@@ -142,7 +146,7 @@ async function boot() {
 const NAV = {
   gestao: [['dash', 'Painel', 'layout-dashboard'], ['planos', 'Planos', 'tags'], ['membros', 'Membros', 'users'], ['faturacao', 'Faturação', 'receipt']],
   pt: [['alunos', 'Alunos', 'users'], ['exercicios', 'Exercícios', 'barbell'], ['treinos', 'Treinos', 'clipboard-list']],
-  membro: [['inicio', 'Início', 'home']]};
+  membro: [['inicio', 'Início', 'home'], ['treino', 'Treino', 'barbell'], ['pagamentos', 'Pagamentos', 'receipt']]};
 
 function shell() {
   S.sec = S.sec || {};
@@ -154,7 +158,7 @@ function shell() {
   document.body.classList.toggle('has-nav', !!nav);
   app.innerHTML = `<div class="row no-print"><div><span class="mu">${esc(S.gym)}</span><h1>Olá, ${esc(S.name.split(' ')[0])}</h1></div>
     <button class="btn ghost" id="out">Sair</button></div>${sw}<section id="view" aria-live="polite"></section>${nav}`;
-  $id('out').onclick = async () => { await db.auth.signOut(); loginView(); };
+  $id('out').onclick = async () => { S = {}; await db.auth.signOut(); loginView(); };
   app.querySelectorAll('[data-m]').forEach(b => b.onclick = () => {
     S.recibo = null; S.novo = false; B = null; S.mode = b.dataset.m; try { localStorage.setItem('mode', S.mode); } catch {} shell(); });
   app.querySelectorAll('[data-s]').forEach(b => b.onclick = () => { S.recibo = null; S.novo = false; B = null; S.sec[S.mode] = b.dataset.s; shell(); });
@@ -402,18 +406,83 @@ async function pt(el) {
     : '<p class="mu">Ainda não tens alunos atribuídos.</p>') + '</div>';
 }
 
-async function membro(el) {
+const pos = (a, b) => a.position - b.position;
+const dia = t => new Date(t).toLocaleDateString('sv-SE', { timeZone: 'Africa/Luanda' });
+const ir = s => { S.sec[S.mode] = s; shell(); };
+const gruposDe = d => [...new Set(d.workout_items.map(i => i.exercises?.muscle_group).filter(Boolean))].join(', ');
+
+async function carregaMembro() {
   const { data: m, error } = await db.from('member_status').select('*').eq('profile_id', S.uid).maybeSingle();
-  if (error) return el.innerHTML = fail(error);
-  if (!m) return el.innerHTML = '<p class="mu">Ainda não tens ficha de membro.</p>';
-  el.innerHTML = `<div class="card"><span class="mu">Mensalidade</span>
-      <div class="big"><span class="tag ${m.status}">${STATE[m.status]}</span></div>
-      <span class="mu">${esc(m.plan_name || 'Sem plano')} · renova em ${dm(m.end_date)}</span></div>
-    <div class="card"><span class="mu">O teu código</span><div class="big">${esc(m.code)}</div></div>`
-    + soon('Treino de hoje, Pagamentos');
+  if (error) throw error;
+  if (!m) return null;
+  const [pl, lg] = await Promise.all([
+    db.from('workout_plans').select('name, workout_days(id, label, position, workout_items(sets, reps, position, exercises(name, muscle_group, video_url)))')
+      .eq('member_id', m.member_id).eq('active', true).order('created_at', { ascending: false }).limit(1),
+    db.from('workout_logs').select('day_id, done_at').eq('member_id', m.member_id).order('done_at', { ascending: false }).limit(1)]);
+  if (pl.error || lg.error) throw pl.error || lg.error;
+  const plan = pl.data[0] || null, days = plan ? plan.workout_days.sort(pos) : [];
+  days.forEach(d => d.workout_items.sort(pos));
+  const last = lg.data[0], i = last ? days.findIndex(d => d.id === last.day_id) : -1;
+  const feito = !!last && dia(last.done_at) === dia(new Date()) && i >= 0;
+  return { m, plan, days, feito, hoje: days.length ? days[feito ? i : (i + 1) % days.length] : null };
 }
 
-const VIEWS = { gestao: { dash, planos, membros, faturacao }, pt: { alunos: pt, exercicios, treinos }, membro: { inicio: membro } };
+async function membro(el) {
+  let D; try { D = await carregaMembro(); } catch (e) { return el.innerHTML = fail(e); }
+  if (!D) return el.innerHTML = '<p class="mu">Ainda não tens ficha de membro.</p>';
+  const { m, hoje, feito } = D, flash = S.flashM ? `<p class="ok" role="status">${esc(S.flashM)}</p>` : ''; S.flashM = '';
+  el.innerHTML = `${flash}<div class="grid g2"><div class="card"><span class="mu">Mensalidade</span>
+      <div style="margin:6px 0"><span class="tag ${m.status}">${STATE[m.status]}</span></div>
+      <span class="mu">${esc(m.plan_name || 'Sem plano')} · renova em ${dm(m.end_date)}</span></div>
+    <div class="card"><span class="mu">O teu código de acesso</span><div class="big">${esc(m.code)}</div></div></div>
+    <div class="card"><span class="mu">Treino de hoje</span>
+      ${hoje ? `<div><strong>Treino ${esc(hoje.label)}</strong>${gruposDe(hoje) ? ' · ' + esc(gruposDe(hoje)) : ''}${feito ? ' · concluído' : ''}</div>
+        <button class="btn ghost" id="vt" style="margin-top:10px">Ver treino</button>` : '<div class="mu">Ainda não tens plano de treino. Fala com o teu PT.</div>'}</div>
+    ${['expired', 'expiring', 'none'].includes(m.status) ? '<button class="btn" id="rn">Renovar mensalidade</button>' : ''}`;
+  if ($id('vt')) $id('vt').onclick = () => ir('treino');
+  if ($id('rn')) $id('rn').onclick = () => ir('pagamentos');
+}
+
+async function treinoM(el) {
+  let D; try { D = await carregaMembro(); } catch (e) { return el.innerHTML = fail(e); }
+  if (!D || !D.plan) return el.innerHTML = '<h2>O meu treino</h2><p class="mu">Ainda não tens plano de treino. Fala com o teu PT.</p>';
+  if (!D.days.some(d => d.id === S.dia)) S.dia = D.hoje.id;
+  const d = D.days.find(x => x.id === S.dia);
+  el.innerHTML = `<h2>O meu treino</h2><p class="mu">${esc(D.plan.name)}</p>
+    <nav class="modes">${D.days.map(x => `<button data-d="${x.id}" aria-pressed="${x.id === S.dia}">Treino ${esc(x.label)}</button>`).join('')}</nav>
+    <div class="list">${d.workout_items.map(i => `<div class="card row"><div><strong>${esc(i.exercises?.name)}</strong><br><span class="mu">${esc(i.exercises?.muscle_group)}</span>
+      ${/^https?:\/\//.test(i.exercises?.video_url || '') ? ` · <a href="${esc(i.exercises.video_url)}" target="_blank" rel="noopener">vídeo</a>` : ''}</div>
+      <strong>${i.sets} × ${i.reps}</strong></div>`).join('')}</div>
+    <p class="err" id="ce"></p><button class="btn" id="cc">Concluir treino</button>`;
+  el.querySelector('.modes').onclick = ev => { const b = ev.target.closest('[data-d]'); if (b) { S.dia = b.dataset.d; treinoM(el); } };
+  $id('cc').onclick = async ev => {
+    ev.target.disabled = true;
+    const { error } = await db.from('workout_logs').insert({ member_id: D.m.member_id, day_id: d.id });
+    if (error) { $id('ce').textContent = error.message; ev.target.disabled = false; }
+    else { S.flashM = `Treino ${d.label} concluído. Bom trabalho!`; S.dia = null; ir('inicio'); }
+  };
+}
+
+async function pagM(el) {
+  const { data: m, error } = await db.from('member_status').select('member_id, plan_name, end_date, status').eq('profile_id', S.uid).maybeSingle();
+  if (error) return el.innerHTML = fail(error);
+  if (!m) return el.innerHTML = '<p class="mu">Ainda não tens ficha de membro.</p>';
+  const { data: ps, error: e2 } = await db.from('payments').select('id, receipt_no, amount, method, paid_at, plans(name)')
+    .eq('member_id', m.member_id).order('paid_at', { ascending: false }).limit(20);
+  if (e2) return el.innerHTML = fail(e2);
+  el.innerHTML = `<h2>Pagamentos</h2><div class="card"><span class="mu">Mensalidade · ${m.status === 'expired' ? 'venceu' : 'vence'} em ${dm(m.end_date)}</span>
+      <div class="big">${m.plan_name ? esc(m.plan_name) : 'Sem plano'}</div></div>
+    <div class="card"><span class="mu">Como pagar</span><p style="margin:6px 0 0">Paga na receção, por transferência bancária ou por Multicaixa Express. A receção regista o pagamento e a tua mensalidade é atualizada.</p></div>
+    <h3>Histórico</h3><div class="list">${ps.length ? ps.map(p => `<div class="card row"><div><strong>${rno(p)}</strong><br><span class="mu">${esc(p.plans?.name || '')} · ${METODO[p.method]} · ${dh(p.paid_at)}</span></div>
+      <strong>${kz(p.amount)}</strong></div>`).join('') : '<p class="mu">Ainda não há pagamentos.</p>'}</div>`;
+}
+
+// Se a sessão mudar noutro separador (outro utilizador a entrar), esta página reflete o utilizador real
+db.auth.onAuthStateChange((_e, s) => {
+  if (S.uid && (!s || s.user.id !== S.uid)) setTimeout(() => s ? boot() : loginView(), 0);
+});
+
+const VIEWS = { gestao: { dash, planos, membros, faturacao }, pt: { alunos: pt, exercicios, treinos }, membro: { inicio: membro, treino: treinoM, pagamentos: pagM } };
 
 db.auth.getSession().then(({ data }) => data.session ? boot() : loginView());
 </script>
