@@ -85,6 +85,10 @@ details.card summary{cursor:pointer}
 details ul{margin:8px 0;padding-left:20px}
 .grid.g2{grid-template-columns:1fr}
 @media(min-width:640px){.grid.g2{grid-template-columns:repeat(2,minmax(0,1fr))}#nav button{flex:none}}
+.av{width:56px;height:56px;border-radius:50%;background:var(--line);display:grid;place-items:center;font-size:22px;font-weight:700;flex:none}
+.open{cursor:pointer}
+.acts{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+.fg{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 12px}
 :focus-visible{outline:2px solid var(--lime);outline-offset:2px}
 </style>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.49.0/dist/tabler-icons.min.css">
@@ -146,7 +150,7 @@ async function boot() {
 const NAV = {
   gestao: [['dash', 'Painel', 'layout-dashboard'], ['planos', 'Planos', 'tags'], ['membros', 'Membros', 'users'], ['faturacao', 'Faturação', 'receipt']],
   pt: [['alunos', 'Alunos', 'users'], ['exercicios', 'Exercícios', 'barbell'], ['treinos', 'Treinos', 'clipboard-list']],
-  membro: [['inicio', 'Início', 'home'], ['treino', 'Treino', 'barbell'], ['pagamentos', 'Pagamentos', 'receipt']]};
+  membro: [['inicio', 'Início', 'home'], ['treino', 'Treino', 'barbell'], ['avaliacao', 'Avaliação', 'chart-line'], ['pagamentos', 'Pagamentos', 'receipt']]};
 
 function shell() {
   S.sec = S.sec || {};
@@ -160,8 +164,8 @@ function shell() {
     <button class="btn ghost" id="out">Sair</button></div>${sw}<section id="view" aria-live="polite"></section>${nav}`;
   $id('out').onclick = async () => { S = {}; await db.auth.signOut(); loginView(); };
   app.querySelectorAll('[data-m]').forEach(b => b.onclick = () => {
-    S.recibo = null; S.novo = false; B = null; S.mode = b.dataset.m; try { localStorage.setItem('mode', S.mode); } catch {} shell(); });
-  app.querySelectorAll('[data-s]').forEach(b => b.onclick = () => { S.recibo = null; S.novo = false; B = null; S.sec[S.mode] = b.dataset.s; shell(); });
+    S.ficha = null; S.recibo = null; S.novo = false; B = null; S.mode = b.dataset.m; try { localStorage.setItem('mode', S.mode); } catch {} shell(); });
+  app.querySelectorAll('[data-s]').forEach(b => b.onclick = () => { S.ficha = null; S.recibo = null; S.novo = false; B = null; S.sec[S.mode] = b.dataset.s; shell(); });
   VIEWS[S.mode][cur]($id('view'));
 }
 
@@ -257,6 +261,7 @@ async function criarMembro(d) {
 }
 
 async function membros(el) {
+  if (S.ficha) return ficha(el);
   const [m, p] = await Promise.all([
     db.from('member_status').select('*').order('full_name'),
     db.from('user_roles').select('user_id, profiles(full_name)').eq('role', 'pt')]);
@@ -277,12 +282,12 @@ async function membros(el) {
     const f = $id('fl').value, q = $id('q').value.toLowerCase();
     const rows = m.data.filter(x => (f === 'all' || (f === 'active' ? ['active', 'expiring'].includes(x.status) : x.status === f))
       && `${x.full_name} ${x.phone} ${x.code}`.toLowerCase().includes(q));
-    $id('ml').innerHTML = rows.length ? rows.map(x => `<div class="card row"><div><strong>${esc(x.full_name)}</strong><br>
+    $id('ml').innerHTML = rows.length ? rows.map(x => `<div class="card row open" data-f="${x.member_id}"><div><strong>${esc(x.full_name)}</strong><br>
       <span class="mu">${esc(x.phone || '')} · ${esc(x.plan_name || 'Sem plano')} · expira ${dm(x.end_date)} · código ${esc(x.code)}</span></div>
       <div style="display:grid;gap:6px;justify-items:end"><span class="tag ${x.status}">${STATE[x.status]}</span><button class="btn ghost" data-r="${x.member_id}">Renovar</button></div></div>`).join('') : '<p class="mu">Nenhum membro encontrado.</p>';
   };
   $id('fl').onchange = $id('q').oninput = draw;
-  $id('ml').onclick = ev => { const b = ev.target.closest('[data-r]'); if (b) { S.prefill = b.dataset.r; S.sec.gestao = 'faturacao'; shell(); } };
+  $id('ml').onclick = ev => { const b = ev.target.closest('[data-r]'); if (b) { S.prefill = b.dataset.r; S.sec.gestao = 'faturacao'; return shell(); } const c = ev.target.closest('[data-f]'); if (c) { S.ficha = c.dataset.f; shell(); } };
   $id('nm').onclick = () => { $id('mf').hidden = !$id('mf').hidden; };
   $id('mf').onsubmit = async e => {
     e.preventDefault(); const d = Object.fromEntries(new FormData(e.target)), btn = e.submitter;
@@ -396,14 +401,86 @@ async function guardarPlano(days) {
   await db.from('workout_plans').update({ active: false }).eq('member_id', B.mid).neq('id', pl.id);
 }
 
+const u1 = (v, s) => v == null ? '—' : String(v).replace('.', ',') + s;
+
+function linha(vals) {
+  if (vals.length < 2) return '<p class="mu">São precisas pelo menos 2 avaliações para mostrar a evolução.</p>';
+  const w = 300, h = 90, mn = Math.min(...vals), r = Math.max(...vals) - mn || 1;
+  const pts = vals.map((v, i) => `${(i / (vals.length - 1) * (w - 20) + 10).toFixed(1)},${(h - 10 - (v - mn) / r * (h - 20)).toFixed(1)}`).join(' ');
+  return `<svg viewBox="0 0 ${w} ${h}" width="100%" role="img" aria-label="Evolução do peso"><polyline points="${pts}" fill="none" stroke="#c8f533" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/></svg>`;
+}
+
+function resumoAval(a) {
+  if (!a.length) return '<p class="mu">Ainda não há avaliações físicas.</p>';
+  const u = a[0], imc = u.weight_kg && u.height_cm ? (u.weight_kg / ((u.height_cm / 100) ** 2)).toFixed(1).replace('.', ',') : '—';
+  const c = (l, v) => `<div class="card"><span class="mu">${l}</span><div class="big">${v}</div></div>`;
+  return `<p class="mu">Última avaliação: ${new Date(u.assessed_at + 'T00:00').toLocaleDateString('pt-PT')}</p>
+    <div class="grid">${c('Peso', u1(u.weight_kg, ' kg'))}${c('Altura', u1(u.height_cm, ' cm'))}${c('% gordura', u1(u.body_fat_pct, ' %'))}${c('IMC', imc)}</div>
+    <div class="card"><span class="mu">Medidas</span><div>Peito ${u1(u.chest_cm, '')} · Cintura ${u1(u.waist_cm, '')} · Braço ${u1(u.arm_cm, '')} · Coxa ${u1(u.thigh_cm, '')} cm</div></div>
+    <div class="card"><span class="mu">Evolução do peso</span>${linha(a.filter(x => x.weight_kg != null).map(x => +x.weight_kg).reverse())}</div>`;
+}
+
+async function ficha(el) {
+  const id = S.ficha;
+  const [m, g, as, lg, pl] = await Promise.all([
+    db.from('member_status').select('*').eq('member_id', id).single(),
+    db.from('members').select('goal').eq('id', id).single(),
+    db.from('assessments').select('*').eq('member_id', id).order('assessed_at', { ascending: false }).limit(12),
+    db.from('workout_logs').select('id', { count: 'exact', head: true }).eq('member_id', id).gte('done_at', ym(new Date()) + '-01T00:00:00+01:00'),
+    db.from('workout_plans').select('name, workout_days(label, position)').eq('member_id', id).eq('active', true).limit(1)]);
+  const e = [m, g, as, lg, pl].find(x => x.error); if (e) return el.innerHTML = fail(e.error);
+  const s = m.data, p = pl.data[0], has = r => S.roles.includes(r);
+  const staff = has('owner') || has('admin') || has('receptionist'), canAv = has('owner') || has('admin') || has('pt');
+  const F = (n, l) => `<label>${l}<input name="${n}" type="number" step="0.1" min="0"></label>`;
+  el.innerHTML = `<button class="btn ghost no-print" id="fb">← Voltar</button>
+    <div class="row" style="margin:16px 0"><div class="av">${esc(s.full_name[0])}</div>
+      <div style="flex:1"><h2 style="margin:0">${esc(s.full_name)}</h2><span class="mu">${esc(s.phone || '')} · código ${esc(s.code)}</span></div>
+      <span class="tag ${s.status}">${STATE[s.status]}</span></div>
+    <div class="grid g2">
+      <div class="card"><span class="mu">Mensalidade</span><div><strong>${esc(s.plan_name || 'Sem plano')}</strong> · expira ${dm(s.end_date)}</div></div>
+      <div class="card"><span class="mu">Treinos concluídos este mês</span><div class="big">${lg.count ?? 0}</div></div>
+      <div class="card"><span class="mu">Plano de treino atual</span><div>${p ? `<strong>${esc(p.name)}</strong> · Treinos ${p.workout_days.sort(pos).map(d => d.label).join(', ')}` : 'Sem plano atribuído'}</div></div>
+      <div class="card"><span class="mu">Objetivo</span>${staff ? `<input id="go" value="${esc(g.data.goal || '')}" placeholder="Ex.: ganho de massa" aria-label="Objetivo"><button class="btn ghost" id="gs">Guardar objetivo</button>`
+        : `<div>${esc(g.data.goal || '—')}</div>`}</div></div>
+    <div class="acts">${S.modes.includes('pt') ? '<button class="btn" id="fp">Atribuir plano de treino</button>' : ''}${canAv ? '<button class="btn ghost" id="fa">Nova avaliação física</button>' : ''}</div>
+    <form id="af" class="card" hidden><h3>Nova avaliação física</h3><div class="fg">${F('weight_kg', 'Peso (kg)')}${F('height_cm', 'Altura (cm)')}${F('body_fat_pct', '% gordura')}${F('chest_cm', 'Peito (cm)')}${F('waist_cm', 'Cintura (cm)')}${F('arm_cm', 'Braço (cm)')}${F('thigh_cm', 'Coxa (cm)')}</div>
+      <p class="err" id="ae"></p><button class="btn">Guardar avaliação</button></form>
+    <h3>Avaliação física</h3>${resumoAval(as.data)}`;
+  $id('fb').onclick = () => { S.ficha = null; shell(); };
+  if ($id('fp')) $id('fp').onclick = () => { S.mode = 'pt'; S.sec.pt = 'treinos'; S.novo = true; B = { mid: id, name: '', days: [{ label: 'A', items: [] }], cur: 0, grp: 'Todos' }; S.ficha = null; shell(); };
+  if ($id('fa')) $id('fa').onclick = () => { $id('af').hidden = !$id('af').hidden; };
+  if ($id('gs')) $id('gs').onclick = async () => {
+    const { error } = await db.from('members').update({ goal: $id('go').value.trim() || null }).eq('id', id);
+    $id('gs').textContent = error ? error.message : 'Guardado';
+  };
+  $id('af').onsubmit = async ev => {
+    ev.preventDefault(); const d = Object.fromEntries(new FormData(ev.target)), row = { member_id: id, pt_id: S.uid };
+    for (const k in d) row[k] = d[k] === '' ? null : +d[k];
+    if (row.weight_kg == null) return $id('ae').textContent = 'Indica pelo menos o peso.';
+    ev.submitter.disabled = true;
+    const { error } = await db.from('assessments').insert(row);
+    error ? ($id('ae').textContent = error.message, ev.submitter.disabled = false) : ficha(el);
+  };
+}
+
+async function avalM(el) {
+  const { data: m, error } = await db.from('member_status').select('member_id').eq('profile_id', S.uid).maybeSingle();
+  if (error) return el.innerHTML = fail(error);
+  if (!m) return el.innerHTML = '<p class="mu">Ainda não tens ficha de membro.</p>';
+  const { data: as, error: e2 } = await db.from('assessments').select('*').eq('member_id', m.member_id).order('assessed_at', { ascending: false }).limit(12);
+  el.innerHTML = '<h2>Avaliação física</h2>' + (e2 ? fail(e2) : resumoAval(as));
+}
+
 async function pt(el) {
+  if (S.ficha) return ficha(el);
   // filtro explícito: o dono também vê todos por ser gestor, mas aqui quer só os seus alunos
   const { data, error } = await db.from('member_status').select('*').eq('pt_id', S.uid).order('full_name');
   if (error) return el.innerHTML = fail(error);
   el.innerHTML = `<h2>Os meus alunos</h2><div class="list">` + (data.length
-    ? data.map(m => `<div class="card row"><div><strong>${esc(m.full_name)}</strong><br><span class="mu">${esc(m.plan_name || 'Sem plano atribuído')}</span></div>
+    ? data.map(m => `<div class="card row open" data-f="${m.member_id}"><div><strong>${esc(m.full_name)}</strong><br><span class="mu">${esc(m.plan_name || 'Sem plano atribuído')}</span></div>
         <span class="tag ${m.status}">${STATE[m.status]}</span></div>`).join('')
     : '<p class="mu">Ainda não tens alunos atribuídos.</p>') + '</div>';
+  el.onclick = ev => { const c = ev.target.closest('[data-f]'); if (c) { S.ficha = c.dataset.f; shell(); } };
 }
 
 const pos = (a, b) => a.position - b.position;
@@ -482,7 +559,7 @@ db.auth.onAuthStateChange((_e, s) => {
   if (S.uid && (!s || s.user.id !== S.uid)) setTimeout(() => s ? boot() : loginView(), 0);
 });
 
-const VIEWS = { gestao: { dash, planos, membros, faturacao }, pt: { alunos: pt, exercicios, treinos }, membro: { inicio: membro, treino: treinoM, pagamentos: pagM } };
+const VIEWS = { gestao: { dash, planos, membros, faturacao }, pt: { alunos: pt, exercicios, treinos }, membro: { inicio: membro, treino: treinoM, avaliacao: avalM, pagamentos: pagM } };
 
 db.auth.getSession().then(({ data }) => data.session ? boot() : loginView());
 </script>
