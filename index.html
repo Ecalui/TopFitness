@@ -156,6 +156,50 @@ body.is-login main{max-width:1000px}
 .inst-slot.hdr .btn{margin-top:0}
 .inst-slot .btn i{margin-right:6px;vertical-align:-2px}
 .inst-ios{margin:14px 0 0;font-size:14px}
+/* aluno: semana, evolução, cartão, treino, descanso, celebração */
+.bar{height:8px;border-radius:99px;background:var(--line);overflow:hidden}
+.bar i{display:block;height:100%;border-radius:99px;background:var(--ac);transition:width .3s}
+.week{display:flex;justify-content:space-between;gap:6px;margin:14px 0 14px}
+.wd{flex:1;text-align:center;font-size:12px;color:var(--mu)}
+.wd b{display:grid;place-items:center;width:100%;max-width:44px;aspect-ratio:1;margin:6px auto 0;border-radius:50%;border:2px solid var(--line);font-size:20px;line-height:1}
+.wd.on b{background:var(--ac);border-color:var(--ac);color:var(--acx)}
+.wd.td{color:var(--tx);font-weight:700}
+.wd.td b{border-color:var(--ac)}
+.stats{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:12px;margin-top:14px}
+.stats>div>span{display:block;font-size:14px}
+.dt::first-letter{text-transform:uppercase}
+.who h1{font-size:clamp(20px,6vw,28px)}
+.stats strong{display:block;font-size:20px;line-height:1.2;white-space:nowrap}
+#view{padding-top:14px}
+.delta{font-size:clamp(28px,8vw,40px);font-weight:700;line-height:1.15}
+.mcard{background:var(--hero);color:#fff;border-radius:22px;padding:18px 20px;display:flex;align-items:center;gap:16px;margin-bottom:12px;box-shadow:var(--sh)}
+.mcard img{width:72px;height:72px;border-radius:18px;flex:none;box-shadow:0 6px 18px rgba(0,0,0,.35)}
+.mcard .cd{font-size:clamp(24px,8vw,32px);font-weight:700;letter-spacing:.14em}
+.vazio{text-align:center;padding:28px 20px}
+.vazio .ki{margin:0 auto 12px;width:48px;height:48px;font-size:26px}
+.ex{display:flex;align-items:center;gap:14px;cursor:pointer;user-select:none;-webkit-user-select:none;transition:opacity .2s}
+.tick{width:38px;height:38px;border-radius:50%;border:2px solid var(--line);display:grid;place-items:center;flex:none;color:transparent;font-size:22px}
+.ex.done .tick{background:var(--ac);border-color:var(--ac);color:var(--acx)}
+.ex.done{opacity:.72}
+.ex.done strong:first-of-type{text-decoration:line-through}
+.rest{position:fixed;z-index:8;left:12px;right:12px;bottom:calc(84px + env(safe-area-inset-bottom,0px));background:var(--hero);color:#fff;border-radius:18px;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;gap:12px;box-shadow:0 10px 30px rgba(0,0,0,.35)}
+.rest .rt{font-size:28px;display:block;font-variant-numeric:tabular-nums}
+.rest .btn{padding:8px 14px;min-height:40px}
+.rest .btn.ghost{color:#fff;border-color:rgba(255,255,255,.5)}
+@media(min-width:640px){.rest{left:auto;right:24px;bottom:24px;width:340px}}
+.cele{position:fixed;inset:0;z-index:60;display:grid;place-items:center;padding:20px;background:radial-gradient(700px 420px at 15% 10%,rgba(31,111,194,.55),transparent 60%),radial-gradient(700px 420px at 90% 95%,rgba(255,138,42,.45),transparent 60%),#0a1626;color:#fff;overflow:hidden;animation:fade .25s ease}
+.cb{position:relative;text-align:center;max-width:380px;width:100%}
+.cb h2{margin:18px 0 8px;font-size:28px;color:#fff}
+.cb p{margin:0 0 20px;color:#cfe0f2}
+.ck{width:96px;height:96px;border-radius:50%;background:var(--ac);color:var(--acx);display:grid;place-items:center;font-size:52px;margin:0 auto;animation:pop .5s ease both;box-shadow:0 0 0 12px rgba(255,138,42,.22)}
+.cb .stats{grid-auto-columns:auto;justify-content:center;gap:34px;text-align:center;margin:0 0 26px}
+.cb .stats span{color:#cfe0f2}
+.cb .btn{width:100%}
+.cf{position:absolute;inset:0;pointer-events:none}
+.cf s{position:absolute;top:-16px;width:8px;height:14px;border-radius:2px;opacity:.9;animation:fall linear infinite}
+@keyframes fall{to{transform:translateY(110vh) rotate(540deg)}}
+@keyframes fade{from{opacity:0}}
+@media(prefers-reduced-motion:reduce){.cf{display:none}.ck{animation:none}}
 </style>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.49.0/dist/tabler-icons.min.css">
 </head>
@@ -247,12 +291,13 @@ const NAV = {
 
 function splash() {
   const d = document.createElement('div'); d.className = 'splash'; d.setAttribute('aria-hidden', 'true');
-  d.innerHTML = `<img src="${LOGO_BIG}" alt=""><p>Olá, ${esc(S.name.split(' ')[0])}</p>`;
+  d.innerHTML = `<img src="${LOGO_BIG}" alt=""><p>${saud()}, ${esc(S.name.split(' ')[0])}</p>`;
   d.onanimationend = e => { if (e.target === d) d.remove(); };
   document.body.appendChild(d);
 }
 
 function shell() {
+  stopRest();
   document.body.classList.remove('is-login');
   if (!S.welcomed) { S.welcomed = true; splash(); }
   S.sec = S.sec || {};
@@ -262,7 +307,7 @@ function shell() {
   const nav = items.length > 1
     ? `<nav id="nav" aria-label="Secções"><img class="brand" src="${LOGO}" alt="">${items.map(([k, l, i]) => `<button data-s="${k}"${k === cur ? ' aria-current="page"' : ''}><i class="ti ti-${i}" aria-hidden="true"></i><span>${l}</span></button>`).join('')}</nav>` : '';
   document.body.classList.toggle('has-nav', !!nav);
-  app.innerHTML = `<div class="row no-print"><div class="who"><img class="lg" src="${LOGO}" alt=""><div><span class="mu">${esc(S.gym)}</span><h1 style="margin:0">Olá, ${esc(S.name.split(' ')[0])}</h1></div></div>
+  app.innerHTML = `<div class="row no-print"><div class="who"><img class="lg" src="${LOGO}" alt=""><div><span class="mu">${esc(S.gym)}</span><h1 style="margin:0">${saud()}, ${esc(S.name.split(' ')[0])}</h1></div></div>
     <div class="hr"><span class="inst-slot hdr"></span><button class="btn ghost" id="th" aria-label="Alternar claro e escuro"><i class="ti ti-${T === 'dark' ? 'sun' : 'moon'}" aria-hidden="true"></i></button><button class="btn ghost" id="out">Sair</button></div></div>${sw}<section id="view" aria-live="polite"></section>${nav}`;
   renderInstalar();
   $id('th').onclick = () => { T = T === 'dark' ? 'light' : 'dark'; tema(T); try { localStorage.setItem('theme', T); } catch {} shell(); };
@@ -512,14 +557,22 @@ function linha(vals) {
   return `<svg viewBox="0 0 ${w} ${h}" width="100%" role="img" aria-label="Evolução do peso"><polyline points="${pts}" fill="none" stroke="#ff8a2a" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/></svg>`;
 }
 
+function variacao(a) {
+  if (a.length < 2) return '';
+  const p = a[a.length - 1], u = a[0];
+  const dl = (l, k, s) => p[k] == null || u[k] == null ? '' : `<div class="card"><span class="mu">${l}</span><div class="big">${sinal(+u[k] - +p[k])}${s}</div></div>`;
+  return `<h3>Desde a primeira avaliação (${new Date(p.assessed_at + 'T00:00').toLocaleDateString('pt-PT')})</h3>
+    <div class="grid">${dl('Peso', 'weight_kg', ' kg')}${dl('Cintura', 'waist_cm', ' cm')}${dl('% gordura', 'body_fat_pct', ' %')}${dl('Braço', 'arm_cm', ' cm')}</div>`;
+}
+
 function resumoAval(a) {
-  if (!a.length) return '<p class="mu">Ainda não há avaliações físicas.</p>';
+  if (!a.length) return vazio('chart-line', 'Ainda sem avaliação física', 'É o ponto de partida: peso, medidas e % de gordura. A tua evolução aparece aqui a partir da segunda avaliação.');
   const u = a[0], imc = u.weight_kg && u.height_cm ? (u.weight_kg / ((u.height_cm / 100) ** 2)).toFixed(1).replace('.', ',') : '—';
   const c = (l, v) => `<div class="card"><span class="mu">${l}</span><div class="big">${v}</div></div>`;
   return `<p class="mu">Última avaliação: ${new Date(u.assessed_at + 'T00:00').toLocaleDateString('pt-PT')}</p>
     <div class="grid">${c('Peso', u1(u.weight_kg, ' kg'))}${c('Altura', u1(u.height_cm, ' cm'))}${c('% gordura', u1(u.body_fat_pct, ' %'))}${c('IMC', imc)}</div>
     <div class="card"><span class="mu">Medidas</span><div>Peito ${u1(u.chest_cm, '')} · Cintura ${u1(u.waist_cm, '')} · Braço ${u1(u.arm_cm, '')} · Coxa ${u1(u.thigh_cm, '')} cm</div></div>
-    <div class="card"><span class="mu">Evolução do peso</span>${linha(a.filter(x => x.weight_kg != null).map(x => +x.weight_kg).reverse())}</div>`;
+    <div class="card"><span class="mu">Evolução do peso</span>${linha(a.filter(x => x.weight_kg != null).map(x => +x.weight_kg).reverse())}</div>${variacao(a)}`;
 }
 
 async function ficha(el) {
@@ -590,65 +643,192 @@ const dia = t => new Date(t).toLocaleDateString('sv-SE', { timeZone: 'Africa/Lua
 const ir = s => { S.sec[S.mode] = s; shell(); };
 const gruposDe = d => [...new Set(d.workout_items.map(i => i.exercises?.muscle_group).filter(Boolean))].join(', ');
 
+// ===== Ecrãs do aluno =====
+const DOW = ['S', 'T', 'Q', 'Q', 'S', 'S', 'D'];
+const ud = s => new Date(s + 'T00:00:00Z');
+const addD = (s, n) => new Date(ud(s).getTime() + n * 864e5).toISOString().slice(0, 10);
+const f1 = n => String(Math.round(n * 10) / 10).replace('.', ',');
+const sinal = d => (d > 0.04 ? '+' : d < -0.04 ? '−' : '') + f1(Math.abs(d));
+const saud = () => {
+  const h = +new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Luanda', hour: 'numeric', hourCycle: 'h23' }).format(new Date());
+  return h < 12 ? 'Bom dia' : h < 19 ? 'Boa tarde' : 'Boa noite';
+};
+const vazio = (ic, t, p) => `<div class="card vazio"><span class="ki b"><i class="ti ti-${ic}" aria-hidden="true"></i></span><strong>${t}</strong><p class="mu" style="margin:6px 0 0">${p}</p></div>`;
+
 async function carregaMembro() {
   const { data: m, error } = await db.from('member_status').select('*').eq('profile_id', S.uid).maybeSingle();
   if (error) throw error;
   if (!m) return null;
-  const [pl, lg, sb] = await Promise.all([
+  const desde = new Date(Date.now() - 120 * 864e5).toISOString();
+  const [pl, lg, sb, av] = await Promise.all([
     db.from('workout_plans').select('name, workout_days(id, label, position, workout_items(sets, reps, position, exercises(name, muscle_group, video_url)))')
       .eq('member_id', m.member_id).eq('active', true).order('created_at', { ascending: false }).limit(1),
-    db.from('workout_logs').select('day_id, done_at').eq('member_id', m.member_id).order('done_at', { ascending: false }).limit(1),
-    db.from('subscriptions').select('start_date, end_date').eq('member_id', m.member_id).order('end_date', { ascending: false }).limit(1)]);
+    db.from('workout_logs').select('day_id, done_at').eq('member_id', m.member_id).gte('done_at', desde).order('done_at', { ascending: false }).limit(500),
+    db.from('subscriptions').select('start_date, end_date').eq('member_id', m.member_id).order('end_date', { ascending: false }).limit(1),
+    db.from('assessments').select('assessed_at, weight_kg').eq('member_id', m.member_id).not('weight_kg', 'is', null).order('assessed_at', { ascending: true }).limit(24)]);
   if (pl.error || lg.error) throw pl.error || lg.error;
   const plan = pl.data[0] || null, days = plan ? plan.workout_days.sort(pos) : [];
   days.forEach(d => d.workout_items.sort(pos));
-  const last = lg.data[0], i = last ? days.findIndex(d => d.id === last.day_id) : -1;
-  const feito = !!last && dia(last.done_at) === dia(new Date()) && i >= 0;
+  const logs = lg.data || [], last = logs[0], i = last ? days.findIndex(d => d.id === last.day_id) : -1;
+  const hd = dia(new Date()), feito = !!last && dia(last.done_at) === hd && i >= 0;
   const sub = sb.data?.[0], dd = s => new Date(s + 'T00:00');
-  const ciclo = sub ? { left: Math.round((dd(sub.end_date) - dd(dia(new Date()))) / 864e5) + 1, total: Math.round((dd(sub.end_date) - dd(sub.start_date)) / 864e5) + 1 } : null;
-  return { m, plan, days, feito, ciclo, hoje: days.length ? days[feito ? i : (i + 1) % days.length] : null };
-}
+  const ciclo = sub ? { left: Math.round((dd(sub.end_date) - dd(hd)) / 864e5) + 1, total: Math.round((dd(sub.end_date) - dd(sub.start_date)) / 864e5) + 1 } : null;
 
-function anel(left, total) {
-  const r = 42, c = 2 * Math.PI * r, p = Math.max(0, Math.min(1, left / (total || 1)));
-  return `<svg viewBox="0 0 100 100" width="112" height="112" role="img" aria-label="${Math.max(0, left)} dias restantes"><circle cx="50" cy="50" r="${r}" fill="none" stroke="rgba(255,255,255,.22)" stroke-width="9"/>
-    <circle cx="50" cy="50" r="${r}" fill="none" stroke="#ff8a2a" stroke-width="9" stroke-linecap="round" stroke-dasharray="${(c * p).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 50 50)"/>
-    <text x="50" y="53" text-anchor="middle" font-size="26" font-weight="700" fill="#fff">${Math.max(0, left)}</text><text x="50" y="69" text-anchor="middle" font-size="10" fill="#fff" opacity=".8">dias</text></svg>`;
+  // consistência: dias com treino na semana (segunda a domingo), treinos no mês, semanas seguidas
+  const treinados = new Set(logs.map(l => dia(l.done_at)));
+  const dow = (ud(hd).getUTCDay() + 6) % 7, seg = addD(hd, -dow);
+  const semana = Array.from({ length: 7 }, (_, k) => { const d = addD(seg, k); return { d, on: treinados.has(d), td: d === hd }; });
+  const nSem = semana.filter(x => x.on).length;
+  let streak = 0; // semanas seguidas com treino; a semana em curso só conta se já treinou, mas nunca quebra a sequência
+  for (let w = nSem ? 0 : 1; w < 17; w++) {
+    const a = addD(seg, -7 * w);
+    if (![0, 1, 2, 3, 4, 5, 6].some(k => treinados.has(addD(a, k)))) break;
+    streak++;
+  }
+  return {
+    m, plan, days, feito, ciclo, semana, nSem, streak, hd,
+    meta: Math.min(6, Math.max(2, days.length || 3)),
+    mes: logs.filter(l => dia(l.done_at).startsWith(hd.slice(0, 7))).length,
+    ultimo: last ? dia(last.done_at) : null,
+    aval: (av.data || []).map(x => ({ d: x.assessed_at, w: +x.weight_kg })),
+    hoje: days.length ? days[feito ? i : (i + 1) % days.length] : null };
 }
 
 async function membro(el) {
   let D; try { D = await carregaMembro(); } catch (e) { return el.innerHTML = fail(e); }
-  if (!D) return el.innerHTML = '<p class="mu">Ainda não tens ficha de membro.</p>';
-  const { m, hoje, feito, ciclo } = D, flash = S.flashM ? `<p class="ok" role="status">${esc(S.flashM)}</p>` : ''; S.flashM = '';
-  el.innerHTML = `${flash}<div class="hero" style="justify-content:flex-start"><div>${ciclo ? anel(ciclo.left, ciclo.total) : ''}</div>
-      <div style="flex:1;min-width:0"><span class="hl">Mensalidade</span><div class="hv" style="font-size:24px">${esc(m.plan_name || 'Sem plano')}</div>
-      <span class="tag ${m.status}">${STATE[m.status]}</span> <span style="opacity:.85">renova em ${dm(m.end_date)}</span></div></div>
-    <div class="grid g2"><div class="card"><span class="mu">O teu código de acesso</span><div class="big">${esc(m.code)}</div></div></div>
-    <div class="card"><span class="mu">Treino de hoje</span>
-      ${hoje ? `<div><strong>Treino ${esc(hoje.label)}</strong>${gruposDe(hoje) ? ' · ' + esc(gruposDe(hoje)) : ''}${feito ? ' · concluído' : ''}</div>
-        <button class="btn ghost" id="vt" style="margin-top:10px">Ver treino</button>` : '<div class="mu">Ainda não tens plano de treino. Fala com o teu PT.</div>'}</div></div>
-    ${['expired', 'expiring', 'none'].includes(m.status) ? '<button class="btn" id="rn">Renovar mensalidade</button>' : ''}`;
+  if (!D) return el.innerHTML = vazio('id-badge', 'Ainda não tens ficha de membro', 'Pede à receção para criar a tua ficha. Depois disso vês aqui o teu treino, a tua evolução e a tua mensalidade.');
+  const { m, hoje, feito, ciclo, semana, nSem, meta, streak, aval, mes } = D;
+  const flash = S.flashM ? `<p class="ok" role="status">${esc(S.flashM)}</p>` : ''; S.flashM = '';
+  const data = new Date().toLocaleDateString('pt-PT', { timeZone: 'Africa/Luanda', weekday: 'long', day: 'numeric', month: 'long' });
+  const nEx = hoje ? hoje.workout_items.length : 0;
+  const n = x => Math.round((ud(D.hd) - ud(x)) / 864e5);
+  const ago = D.ultimo ? (n(D.ultimo) <= 0 ? 'hoje' : n(D.ultimo) === 1 ? 'ontem' : `há ${n(D.ultimo)} dias`) : '';
+
+  const hero = hoje
+    ? `<div class="hero"><div style="min-width:0"><span class="hl dt">${data}</span>
+        <div class="hv">${feito ? 'Treino de hoje concluído' : 'Treino ' + esc(hoje.label)}</div>
+        <span class="hl">${feito ? 'Treino ' + esc(hoje.label) + ' · ' : ''}${esc(gruposDe(hoje) || 'Plano personalizado')} · ${nEx} exercício${nEx === 1 ? '' : 's'}</span></div>
+        <button class="btn" id="vt">${feito ? 'Rever treino' : 'Começar treino'}</button></div>`
+    : `<div class="hero"><div style="min-width:0"><span class="hl dt">${data}</span>
+        <div class="hv">O teu plano está a ser preparado</div><span class="hl">Assim que o teu PT o atribuir, o treino de hoje aparece aqui.</span></div></div>`;
+
+  const msg = nSem >= meta ? 'Meta da semana cumprida. Bom trabalho!' : nSem === 0 ? 'Ainda não treinaste esta semana. Começa hoje.'
+    : `Falta${meta - nSem === 1 ? '' : 'm'} ${meta - nSem} treino${meta - nSem === 1 ? '' : 's'} para a meta da semana.`;
+  const sem = `<div class="card"><div class="row"><h3 style="margin:0">Esta semana</h3><strong>${nSem} de ${meta}</strong></div>
+    <div class="week" role="img" aria-label="${nSem} dias com treino esta semana">${semana.map((x, k) => `<div class="wd${x.on ? ' on' : ''}${x.td ? ' td' : ''}">${DOW[k]}<b>${x.on ? '<i class="ti ti-check" aria-hidden="true"></i>' : ''}</b></div>`).join('')}</div>
+    <div class="bar"><i style="width:${Math.min(100, nSem / meta * 100)}%"></i></div>
+    <p class="mu" style="margin:10px 0 0">${msg}</p>
+    <div class="stats"><div><strong>${mes}</strong><span class="mu">treinos este mês</span></div>
+      ${streak >= 2 ? `<div><strong>${streak}</strong><span class="mu">semanas seguidas</span></div>` : ''}
+      ${ago ? `<div><strong>${ago}</strong><span class="mu">último treino</span></div>` : ''}</div></div>`;
+
+  let ev;
+  if (aval.length >= 2) {
+    const a = aval[0], b = aval[aval.length - 1];
+    ev = `<div class="card"><span class="mu">A tua evolução</span><div class="delta">${sinal(b.w - a.w)} kg</div><span class="mu">desde ${dm(a.d)} · agora ${f1(b.w)} kg</span><br><button class="btn ghost" id="va" style="margin-top:12px">Ver avaliação</button></div>`;
+  } else if (aval.length === 1) {
+    ev = `<div class="card"><span class="mu">A tua evolução</span><div class="delta">${f1(aval[0].w)} kg</div><span class="mu">Ponto de partida registado. Na próxima avaliação vês aqui a tua evolução.</span></div>`;
+  } else {
+    ev = `<div class="card"><span class="mu">A tua evolução</span><div style="font-size:18px;font-weight:700;margin:4px 0">Ainda sem avaliação física</div><span class="mu">É o ponto de partida: peso, medidas e % de gordura. Pede ao teu PT para a fazer.</span></div>`;
+  }
+
+  const renova = ['expired', 'expiring', 'none'].includes(m.status), left = ciclo ? Math.max(0, ciclo.left) : 0;
+  const mens = `<div class="card"><div class="row"><span class="mu">Mensalidade</span><span class="tag ${m.status}">${STATE[m.status]}</span></div>
+    <div style="font-size:20px;font-weight:700;margin:4px 0 10px">${esc(m.plan_name || 'Sem plano')}</div>
+    ${ciclo ? `<div class="bar"><i style="width:${Math.min(100, left / (ciclo.total || 1) * 100)}%"></i></div>
+      <p class="mu" style="margin:8px 0 0">${left > 0 ? `Renova em ${dm(m.end_date)} · faltam ${left} dia${left === 1 ? '' : 's'}` : `Terminou em ${dm(m.end_date)}`}</p>` : '<p class="mu" style="margin:0">Ainda sem mensalidade ativa.</p>'}
+    ${renova ? '<button class="btn" id="rn" style="margin-top:12px">Renovar mensalidade</button>' : ''}</div>`;
+
+  const cartao = `<div class="mcard"><img src="${LOGO_BIG}" alt=""><div style="min-width:0"><span class="hl">Cartão de membro</span>
+    <div style="font-weight:700;font-size:18px;overflow-wrap:anywhere">${esc(m.full_name || S.name)}</div>
+    <span class="hl" style="margin-top:8px">Código de acesso</span><div class="cd">${esc(m.code)}</div></div></div>`;
+
+  el.innerHTML = `${flash}${hero}${sem}<div class="grid g2">${ev}${mens}</div>${cartao}`;
   if ($id('vt')) $id('vt').onclick = () => ir('treino');
+  if ($id('va')) $id('va').onclick = () => ir('avaliacao');
   if ($id('rn')) $id('rn').onclick = () => ir('pagamentos');
+}
+
+// tiques do treino guardados no telemóvel (por dia e por data), para não se perderem ao sair do ecrã
+const chkKey = id => 'chk:' + S.uid + ':' + id + ':' + dia(new Date());
+const lerChk = k => { try { return new Set(JSON.parse(localStorage.getItem(k) || '[]')); } catch { return new Set(); } };
+const gravaChk = (k, s) => { try { localStorage.setItem(k, JSON.stringify([...s])); } catch {} };
+
+let REST = null;
+function stopRest() { if (REST) { clearInterval(REST.t); REST = null; } document.querySelector('.rest')?.remove(); }
+function startRest(sec) {
+  stopRest();
+  const box = document.createElement('div'); box.className = 'rest'; box.setAttribute('role', 'timer');
+  box.innerHTML = '<div><span class="hl">Descanso</span><strong class="rt">0:00</strong></div><div class="hbs"><button class="btn ghost" data-r="15">+15 s</button><button class="btn" data-r="0">Saltar</button></div>';
+  document.body.appendChild(box);
+  REST = { end: Date.now() + sec * 1000, box };
+  const tick = () => {
+    const left = Math.ceil((REST.end - Date.now()) / 1000), rt = box.querySelector('.rt');
+    if (left <= 0) {
+      try { navigator.vibrate?.([200, 100, 200]); } catch {}
+      rt.textContent = 'Pronto!'; clearInterval(REST.t);
+      setTimeout(() => { if (REST && REST.box === box) stopRest(); }, 2500); return;
+    }
+    rt.textContent = Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0');
+  };
+  REST.t = setInterval(tick, 250); tick();
+  box.onclick = e => { const b = e.target.closest('[data-r]'); if (!b) return; if (b.dataset.r === '0') stopRest(); else REST.end += 15000; };
+}
+
+function celebra({ label, sem, meta, mes }) {
+  const o = document.createElement('div'); o.className = 'cele'; o.setAttribute('role', 'dialog'); o.setAttribute('aria-modal', 'true'); o.setAttribute('aria-label', 'Treino concluído');
+  const cores = ['#ff8a2a', '#1f6fc2', '#ffffff', '#5fd6c2'];
+  const conf = Array.from({ length: 22 }, (_, k) => `<s style="left:${(k * 37) % 100}%;background:${cores[k % 4]};animation-delay:${(k % 7) * .15}s;animation-duration:${2.2 + (k % 5) * .3}s"></s>`).join('');
+  o.innerHTML = `<div class="cf" aria-hidden="true">${conf}</div><div class="cb"><span class="ck"><i class="ti ti-check" aria-hidden="true"></i></span>
+    <h2>Treino ${esc(label)} concluído</h2>
+    <p>${esc(S.name.split(' ')[0])}, ${sem >= meta ? 'meta da semana cumprida. Isto é consistência.' : 'mais um treino feito. É assim que se constrói o resultado.'}</p>
+    <div class="stats"><div><strong>${sem} de ${meta}</strong><span>esta semana</span></div><div><strong>${mes}</strong><span>este mês</span></div></div>
+    <button class="btn" id="cx">Continuar</button></div>`;
+  document.body.appendChild(o);
+  const x = $id('cx'); x.focus(); x.onclick = () => o.remove();
+  o.onkeydown = e => { if (e.key === 'Escape') o.remove(); };
 }
 
 async function treinoM(el) {
   let D; try { D = await carregaMembro(); } catch (e) { return el.innerHTML = fail(e); }
-  if (!D || !D.plan) return el.innerHTML = '<h2>O meu treino</h2><p class="mu">Ainda não tens plano de treino. Fala com o teu PT.</p>';
+  if (!D || !D.plan || !D.days.length) return el.innerHTML = '<h2>O meu treino</h2>' + vazio('barbell', 'O teu plano está a ser preparado', 'Assim que o teu PT atribuir o teu plano de treino, ele aparece aqui, pronto a seguir exercício a exercício.');
   if (!D.days.some(d => d.id === S.dia)) S.dia = D.hoje.id;
-  const d = D.days.find(x => x.id === S.dia);
+  const d = D.days.find(x => x.id === S.dia), key = chkKey(d.id), feitos = lerChk(key), n = d.workout_items.length;
   el.innerHTML = `<h2>O meu treino</h2><p class="mu">${esc(D.plan.name)}</p>
     <nav class="modes">${D.days.map(x => `<button data-d="${x.id}" aria-pressed="${x.id === S.dia}">Treino ${esc(x.label)}</button>`).join('')}</nav>
-    <div class="list">${d.workout_items.map(i => `<div class="card row"><div><strong>${esc(i.exercises?.name)}</strong><br><span class="mu">${esc(i.exercises?.muscle_group)}</span>
+    <div class="card"><div class="row"><strong id="pg"></strong><span class="mu">${esc(gruposDe(d))}</span></div><div class="bar" style="margin-top:10px"><i id="pb"></i></div></div>
+    <div class="list">${d.workout_items.map((i, k) => `<div class="card ex" data-k="${k}" role="checkbox" aria-checked="false" tabindex="0">
+      <span class="tick"><i class="ti ti-check" aria-hidden="true"></i></span>
+      <div style="flex:1;min-width:0"><strong>${esc(i.exercises?.name)}</strong><br><span class="mu">${esc(i.exercises?.muscle_group)}</span>
       ${/^https?:\/\//.test(i.exercises?.video_url || '') ? ` · <a href="${esc(i.exercises.video_url)}" target="_blank" rel="noopener">vídeo</a>` : ''}</div>
       <strong>${i.sets} × ${i.reps}</strong></div>`).join('')}</div>
-    <p class="err" id="ce"></p><button class="btn" id="cc">Concluir treino</button>`;
-  el.querySelector('.modes').onclick = ev => { const b = ev.target.closest('[data-d]'); if (b) { S.dia = b.dataset.d; treinoM(el); } };
+    <p class="err" id="ce"></p><button class="btn" id="cc" style="width:100%">Concluir treino</button>`;
+  const cards = [...el.querySelectorAll('.ex')];
+  const pinta = () => {
+    cards.forEach((c, k) => { c.classList.toggle('done', feitos.has(k)); c.setAttribute('aria-checked', feitos.has(k)); });
+    $id('pb').style.width = (n ? feitos.size / n * 100 : 0) + '%';
+    $id('pg').textContent = `${feitos.size} de ${n} exercício${n === 1 ? '' : 's'}`;
+    $id('cc').textContent = n && feitos.size === n ? 'Concluir treino · tudo feito' : 'Concluir treino';
+  };
+  pinta();
+  const flip = c => {
+    if (!c) return;
+    const k = +c.dataset.k, on = !feitos.has(k);
+    on ? feitos.add(k) : feitos.delete(k);
+    gravaChk(key, feitos); pinta();
+    if (on && feitos.size < n) startRest(60); else stopRest();
+  };
+  const lista = el.querySelector('.list');
+  lista.onclick = ev => { if (!ev.target.closest('a')) flip(ev.target.closest('.ex')); };
+  lista.onkeydown = ev => { if (ev.key === ' ' || ev.key === 'Enter') { ev.preventDefault(); flip(ev.target.closest('.ex')); } };
+  el.querySelector('.modes').onclick = ev => { const b = ev.target.closest('[data-d]'); if (b) { stopRest(); S.dia = b.dataset.d; treinoM(el); } };
   $id('cc').onclick = async ev => {
-    ev.target.disabled = true;
+    const b = ev.currentTarget; b.disabled = true;
     const { error } = await db.from('workout_logs').insert({ member_id: D.m.member_id, day_id: d.id });
-    if (error) { $id('ce').textContent = error.message; ev.target.disabled = false; }
-    else { S.flashM = `Treino ${d.label} concluído. Bom trabalho!`; S.dia = null; ir('inicio'); }
+    if (error) { $id('ce').textContent = error.message; b.disabled = false; return; }
+    stopRest(); try { localStorage.removeItem(key); } catch {}
+    const sem = D.nSem + (D.semana.some(x => x.td && x.on) ? 0 : 1);
+    S.dia = null; ir('inicio'); celebra({ label: d.label, sem, meta: D.meta, mes: D.mes + 1 });
   };
 }
 
@@ -663,7 +843,7 @@ async function pagM(el) {
       <div class="big">${m.plan_name ? esc(m.plan_name) : 'Sem plano'}</div></div>
     <div class="card"><span class="mu">Como pagar</span><p style="margin:6px 0 0">Paga na receção, por transferência bancária ou por Multicaixa Express. A receção regista o pagamento e a tua mensalidade é atualizada.</p></div>
     <h3>Histórico</h3><div class="list">${ps.length ? ps.map(p => `<div class="card row"><div><strong>${rno(p)}</strong><br><span class="mu">${esc(p.plans?.name || '')} · ${METODO[p.method]} · ${dh(p.paid_at)}</span></div>
-      <strong>${kz(p.amount)}</strong></div>`).join('') : '<p class="mu">Ainda não há pagamentos.</p>'}</div>`;
+      <strong>${kz(p.amount)}</strong></div>`).join('') : vazio('receipt', 'Ainda sem pagamentos', 'Quando a receção registar o teu primeiro pagamento, o recibo aparece aqui.')}</div>`;
 }
 
 // Se a sessão mudar noutro separador (outro utilizador a entrar), esta página reflete o utilizador real

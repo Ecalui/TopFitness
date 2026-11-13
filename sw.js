@@ -1,6 +1,6 @@
 // Service worker do GymApp: abre a app mesmo com rede fraca, sem nunca guardar dados do Supabase.
 // Para forçar atualização em todos os telemóveis, muda o número da versão.
-const V = 'gym-v1';
+const V = 'gym-v2';
 const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'];
 
 self.addEventListener('install', e => {
