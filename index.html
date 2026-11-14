@@ -200,6 +200,18 @@ body.is-login main{max-width:1000px}
 @keyframes fall{to{transform:translateY(110vh) rotate(540deg)}}
 @keyframes fade{from{opacity:0}}
 @media(prefers-reduced-motion:reduce){.cf{display:none}.ck{animation:none}}
+/* progresso */
+.mood{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:8px 0 14px}
+.mood button{display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 4px;min-height:68px;border:1px solid var(--line);border-radius:14px;background:none;color:var(--tx);font:inherit;font-size:13px;cursor:pointer}
+.mood button i{font-size:26px}
+.mood button[aria-checked=true]{border-color:var(--ac);background:var(--wb);font-weight:700}
+.rg{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
+.rg:last-child{border-bottom:0}
+.rg.t{display:grid;grid-template-columns:52px 1fr auto auto}
+.rm{background:none;border:0;color:var(--mu);font-size:18px;min-width:36px;min-height:36px;padding:0;cursor:pointer}
+.oculto .pv{color:transparent;text-shadow:0 0 10px var(--tx);user-select:none}
+.oculto .chart,.oculto svg{filter:blur(7px)}
+.oculto .big,.oculto .delta{color:transparent;text-shadow:0 0 10px var(--tx);user-select:none}
 </style>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.49.0/dist/tabler-icons.min.css">
 </head>
@@ -287,7 +299,7 @@ async function boot() {
 const NAV = {
   gestao: [['dash', 'Painel', 'layout-dashboard'], ['planos', 'Planos', 'tags'], ['membros', 'Membros', 'users'], ['faturacao', 'Faturação', 'receipt']],
   pt: [['alunos', 'Alunos', 'users'], ['exercicios', 'Exercícios', 'barbell'], ['treinos', 'Treinos', 'clipboard-list']],
-  membro: [['inicio', 'Início', 'home'], ['treino', 'Treino', 'barbell'], ['avaliacao', 'Avaliação', 'chart-line'], ['pagamentos', 'Pagamentos', 'receipt']]};
+  membro: [['inicio', 'Início', 'home'], ['treino', 'Treino', 'barbell'], ['avaliacao', 'Progresso', 'chart-line'], ['pagamentos', 'Pagamentos', 'receipt']]};
 
 function splash() {
   const d = document.createElement('div'); d.className = 'splash'; d.setAttribute('aria-hidden', 'true');
@@ -326,11 +338,12 @@ async function dash(el) {
   if (error) return el.innerHTML = fail(error);
   const hoje = new Date().toLocaleDateString('pt-PT', { timeZone: 'Africa/Luanda', weekday: 'long', day: 'numeric', month: 'long' });
   const k = (ic, cor, v, l) => `<div class="card"><span class="ki ${cor}"><i class="ti ti-${ic}" aria-hidden="true"></i></span><div class="big">${v}</div><span class="mu">${l}</span></div>`;
-  el.innerHTML = `<div class="hero"><div><span style="text-transform:capitalize;opacity:.8">${hoje}</span><span class="hl">Receita do mês</span><div class="hv">${kz(data.revenue_month)}</div></div>
+  el.innerHTML = `<div class="hero"><div><span class="hl dt">${hoje}</span><span class="hl">Receita do mês</span><div class="hv">${kz(data.revenue_month)}</div></div>
     <div class="hbs"><button class="btn" id="hp">Registar pagamento</button><button class="btn ghost" id="hm">Novo membro</button></div></div>
-    <div class="grid g3">${k('users', 'b', data.active, 'Membros ativos')}${k('clock-exclamation', 'o', data.expiring_7d, 'Expiram em 7 dias')}${k('door-enter', 't', data.checkins_today, 'Entradas hoje')}</div>`;
+    <div class="grid g3">${k('users', 'b', data.active, 'Membros ativos')}${k('clock-exclamation', 'o', data.expiring_7d, 'Expiram em 7 dias')}${k('door-enter', 't', data.checkins_today, 'Entradas hoje')}</div><div id="risco"></div>`;
   $id('hp').onclick = () => ir('faturacao');
   $id('hm').onclick = () => { S.novoM = true; ir('membros'); };
+  emRisco($id('risco'));
 }
 
 async function faturacao(el) {
@@ -571,18 +584,19 @@ function resumoAval(a) {
   const c = (l, v) => `<div class="card"><span class="mu">${l}</span><div class="big">${v}</div></div>`;
   return `<p class="mu">Última avaliação: ${new Date(u.assessed_at + 'T00:00').toLocaleDateString('pt-PT')}</p>
     <div class="grid">${c('Peso', u1(u.weight_kg, ' kg'))}${c('Altura', u1(u.height_cm, ' cm'))}${c('% gordura', u1(u.body_fat_pct, ' %'))}${c('IMC', imc)}</div>
-    <div class="card"><span class="mu">Medidas</span><div>Peito ${u1(u.chest_cm, '')} · Cintura ${u1(u.waist_cm, '')} · Braço ${u1(u.arm_cm, '')} · Coxa ${u1(u.thigh_cm, '')} cm</div></div>
+    <div class="card"><span class="mu">Medidas</span><div class="pv">Peito ${u1(u.chest_cm, '')} · Cintura ${u1(u.waist_cm, '')} · Braço ${u1(u.arm_cm, '')} · Coxa ${u1(u.thigh_cm, '')} cm</div></div>
     <div class="card"><span class="mu">Evolução do peso</span>${linha(a.filter(x => x.weight_kg != null).map(x => +x.weight_kg).reverse())}</div>${variacao(a)}`;
 }
 
 async function ficha(el) {
   const id = S.ficha;
-  const [m, g, as, lg, pl] = await Promise.all([
+  const [m, g, as, lg, pl, bl] = await Promise.all([
     db.from('member_status').select('*').eq('member_id', id).single(),
     db.from('members').select('goal').eq('id', id).single(),
     db.from('assessments').select('*').eq('member_id', id).order('assessed_at', { ascending: false }).limit(12),
     db.from('workout_logs').select('id', { count: 'exact', head: true }).eq('member_id', id).gte('done_at', ym(new Date()) + '-01T00:00:00+01:00'),
-    db.from('workout_plans').select('name, workout_days(label, position)').eq('member_id', id).eq('active', true).limit(1)]);
+    db.from('workout_plans').select('name, workout_days(label, position)').eq('member_id', id).eq('active', true).limit(1),
+    db.from('body_logs').select('logged_on, weight_kg, waist_cm, mood').eq('member_id', id).order('logged_on', { ascending: false }).order('created_at', { ascending: false }).limit(60)]);
   const e = [m, g, as, lg, pl].find(x => x.error); if (e) return el.innerHTML = fail(e.error);
   const s = m.data, p = pl.data[0], has = r => S.roles.includes(r);
   const staff = has('owner') || has('admin') || has('receptionist'), canAv = has('owner') || has('admin') || has('pt');
@@ -600,6 +614,7 @@ async function ficha(el) {
     <div class="acts">${S.modes.includes('pt') ? '<button class="btn" id="fp">Atribuir plano de treino</button>' : ''}${canAv ? '<button class="btn ghost" id="fa">Nova avaliação física</button>' : ''}</div>
     <form id="af" class="card" hidden><h3>Nova avaliação física</h3><div class="fg">${F('weight_kg', 'Peso (kg)')}${F('height_cm', 'Altura (cm)')}${F('body_fat_pct', '% gordura')}${F('chest_cm', 'Peito (cm)')}${F('waist_cm', 'Cintura (cm)')}${F('arm_cm', 'Braço (cm)')}${F('thigh_cm', 'Coxa (cm)')}</div>
       <p class="err" id="ae"></p><button class="btn">Guardar avaliação</button></form>
+    ${bl.error ? '' : corpoStaff(bl.data || [], s.pt_id === S.uid)}
     <h3>Avaliação física</h3>${resumoAval(as.data)}`;
   $id('fb').onclick = () => { S.ficha = null; shell(); };
   if ($id('fp')) $id('fp').onclick = () => { S.mode = 'pt'; S.sec.pt = 'treinos'; S.novo = true; B = { mid: id, name: '', days: [{ label: 'A', items: [] }], cur: 0, grp: 'Todos' }; S.ficha = null; shell(); };
@@ -618,12 +633,110 @@ async function ficha(el) {
   };
 }
 
+// ===== Progresso: pesagens e ânimo do aluno =====
+const MOOD = [['mood-sad', 'Em baixo'], ['mood-neutral', 'Normal'], ['mood-smile', 'Bem'], ['mood-happy', 'Em forma']];
+const oculta = () => { try { return localStorage.getItem('ocultaPeso') === '1'; } catch { return false; } };
+
+// pontos = pesagens; linha laranja = tendência (média dos últimos 7 dias), que é o que interessa
+function tendencia(rows) {
+  const w = 300, h = 120, px = 12, py = 14, ts = rows.map(r => ud(r.d).getTime()), t0 = ts[0], t1 = ts[ts.length - 1];
+  const mn = Math.min(...rows.map(r => r.w)), span = (Math.max(...rows.map(r => r.w)) - mn) || 1;
+  const X = t => px + (t1 === t0 ? .5 : (t - t0) / (t1 - t0)) * (w - 2 * px), Y = v => h - py - (v - mn) / span * (h - 2 * py);
+  const tr = rows.map((r, i) => { const win = rows.filter((q, j) => ts[j] <= ts[i] && ts[j] > ts[i] - 7 * 864e5); return X(ts[i]).toFixed(1) + ',' + Y(win.reduce((s, q) => s + q.w, 0) / win.length).toFixed(1); });
+  const dots = rows.map((r, i) => `<circle cx="${X(ts[i]).toFixed(1)}" cy="${Y(r.w).toFixed(1)}" r="3" fill="currentColor" opacity=".35"/>`).join('');
+  return `<svg class="chart" viewBox="0 0 ${w} ${h}" width="100%" role="img" aria-label="Evolução do peso: os pontos são as pesagens e a linha laranja é a tendência dos últimos 7 dias">${dots}${tr.length > 1 ? `<polyline points="${tr.join(' ')}" fill="none" stroke="#ff8a2a" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>` : ''}</svg>`;
+}
+
+function listaRegistos(rows, apagar) {
+  if (!rows.length) return '';
+  return `<div class="card"><h3 style="margin:0 0 6px">Últimos registos</h3>${rows.slice(0, 8).map(r => {
+    const md = MOOD[r.mood - 1];
+    return `<div class="rg t"><span>${dm(r.logged_on)}</span><span class="pv">${r.weight_kg != null ? f1(+r.weight_kg) + ' kg' : '—'}${r.waist_cm != null ? ' · cintura ' + f1(+r.waist_cm) + ' cm' : ''}</span><span class="mu">${md ? `<i class="ti ti-${md[0]}" aria-hidden="true"></i> ${md[1]}` : ''}</span>${apagar ? `<button class="rm" type="button" data-id="${r.id}" aria-label="Apagar o registo de ${dm(r.logged_on)}"><i class="ti ti-trash" aria-hidden="true"></i></button>` : ''}</div>`;
+  }).join('')}</div>`;
+}
+
+function pesos(rows) { // rows vêm da mais recente para a mais antiga
+  return rows.filter(r => r.weight_kg != null).map(r => ({ d: r.logged_on, w: +r.weight_kg })).sort((a, b) => a.d < b.d ? -1 : a.d > b.d ? 1 : 0);
+}
+
+function pesagens(rows, comOcultar) {
+  const ws = pesos(rows);
+  if (!ws.length) return vazio('scale', 'Ainda sem pesagens', 'Quando te pesares, regista aqui o número. Em poucas semanas vês a tua tendência.');
+  const hd = dia(new Date()), seg = addD(hd, -((ud(hd).getUTCDay() + 6) % 7));
+  const med = (a, b) => { const v = ws.filter(r => r.d >= a && r.d < b).map(r => r.w); return v.length ? v.reduce((s, x) => s + x, 0) / v.length : null; };
+  const m1 = med(seg, addD(seg, 7)), m0 = med(addD(seg, -7), seg);
+  const resumo = m1 != null && m0 != null ? `<p style="margin:12px 0 0">Média desta semana <strong class="pv">${f1(m1)} kg</strong> · semana passada <strong class="pv">${f1(m0)} kg</strong> · diferença <strong class="pv">${sinal(m1 - m0)} kg</strong></p>` : '';
+  return `<div class="card"><div class="row"><h3 style="margin:0">As minhas pesagens</h3>${comOcultar ? `<button class="btn ghost" id="ob" type="button" aria-pressed="${oculta()}">${oculta() ? 'Mostrar números' : 'Esconder números'}</button>` : ''}</div>
+    ${ws.length >= 2 ? `<div class="mu" style="margin-top:8px">${tendencia(ws.slice(-90))}</div>
+      <p class="mu" style="margin:4px 0 0;font-size:14px">Os pontos são as pesagens. A linha é a tendência dos últimos 7 dias, e é ela que conta: o peso sobe e desce naturalmente de dia para dia.</p>` : '<p class="mu" style="margin:8px 0 0">Com 2 ou mais pesagens vês aqui a tua tendência.</p>'}
+    ${resumo}</div>${listaRegistos(rows, comOcultar)}`;
+}
+
+function corpoStaff(rows, ePt) {
+  if (!rows.length) return '<h3>Pesagens e ânimo</h3><p class="mu">' + (ePt ? 'O aluno ainda não registou pesagens no app.' : 'Privado: só o aluno e o seu Personal Trainer veem as pesagens e o ânimo.') + '</p>';
+  const ws = pesos(rows);
+  return `<h3>Pesagens e ânimo (registados pelo aluno)</h3>${ws.length >= 2 ? `<div class="card mu">${tendencia(ws.slice(-90))}</div>` : ''}${listaRegistos(rows)}`;
+}
+
 async function avalM(el) {
   const { data: m, error } = await db.from('member_status').select('member_id').eq('profile_id', S.uid).maybeSingle();
   if (error) return el.innerHTML = fail(error);
-  if (!m) return el.innerHTML = '<p class="mu">Ainda não tens ficha de membro.</p>';
-  const { data: as, error: e2 } = await db.from('assessments').select('*').eq('member_id', m.member_id).order('assessed_at', { ascending: false }).limit(12);
-  el.innerHTML = '<h2>Avaliação física</h2>' + (e2 ? fail(e2) : resumoAval(as));
+  if (!m) return el.innerHTML = vazio('id-badge', 'Ainda não tens ficha de membro', 'Pede à receção para criar a tua ficha.');
+  const [bl, av] = await Promise.all([
+    db.from('body_logs').select('id, logged_on, weight_kg, waist_cm, mood').eq('member_id', m.member_id).order('logged_on', { ascending: false }).order('created_at', { ascending: false }).limit(120),
+    db.from('assessments').select('*').eq('member_id', m.member_id).order('assessed_at', { ascending: false }).limit(12)]);
+  const corpo = bl.error ? null : (bl.data || []);
+  const flash = S.flashP ? `<p class="ok" role="status">${esc(S.flashP)}</p>` : ''; S.flashP = '';
+  const form = `<form class="card" id="rf" novalidate><h3 style="margin:0 0 10px">Registo rápido</h3>
+    <div class="fg"><label>Peso (kg)<input name="w" inputmode="decimal" autocomplete="off" placeholder="Ex.: 79,4"></label>
+      <label>Cintura (cm), opcional<input name="c" inputmode="decimal" autocomplete="off"></label></div>
+    <span class="mu">Como me sinto hoje? (opcional)</span>
+    <div class="mood" role="radiogroup" aria-label="Como me sinto hoje">${MOOD.map(([ic, l], k) => `<button type="button" role="radio" aria-checked="false" data-v="${k + 1}"><i class="ti ti-${ic}" aria-hidden="true"></i><span>${l}</span></button>`).join('')}</div>
+    <p class="err" id="re" role="alert"></p><button class="btn" style="width:100%">Guardar registo</button></form>`;
+  el.innerHTML = `<h2>O meu progresso</h2>${flash}<div id="pgz" class="${oculta() ? 'oculto' : ''}">${corpo === null ? '' : form + pesagens(corpo, true)}
+    <h3>Avaliações do PT</h3>${av.error ? fail(av.error) : resumoAval(av.data)}</div>`;
+  if (corpo === null) return;
+  const radios = [...el.querySelectorAll('.mood button')];
+  radios.forEach(b => b.onclick = () => { const on = b.getAttribute('aria-checked') !== 'true'; radios.forEach(x => x.setAttribute('aria-checked', 'false')); b.setAttribute('aria-checked', on); });
+  if ($id('ob')) $id('ob').onclick = () => {
+    const o = $id('pgz').classList.toggle('oculto');
+    try { localStorage.setItem('ocultaPeso', o ? '1' : '0'); } catch {}
+    $id('ob').textContent = o ? 'Mostrar números' : 'Esconder números'; $id('ob').setAttribute('aria-pressed', o);
+  };
+  el.querySelectorAll('.rm').forEach(b => b.onclick = async () => {
+    if (!confirm('Apagar este registo?')) return;
+    const { data, error } = await db.from('body_logs').delete().eq('id', b.dataset.id).select();
+    if (error || !data || !data.length) return $id('re').textContent = 'Não foi possível apagar este registo.';
+    S.flashP = 'Registo apagado.'; avalM(el);
+  });
+  $id('rf').onsubmit = async ev => {
+    ev.preventDefault();
+    const f = ev.target, num = v => v.trim() === '' ? null : +v.trim().replace(',', '.'), err = t => $id('re').textContent = t;
+    const w = num(f.w.value), c = num(f.c.value), mood = +(f.querySelector('[aria-checked=true]')?.dataset.v || 0) || null;
+    if (w == null && c == null && mood == null) return err('Indica o peso, a cintura ou como te sentes.');
+    if (w != null && !(w >= 25 && w <= 400)) return err('Confirma o peso: usa um valor entre 25 e 400 kg.');
+    if (c != null && !(c >= 30 && c <= 250)) return err('Confirma a cintura: usa um valor entre 30 e 250 cm.');
+    ev.submitter.disabled = true;
+    const { error } = await db.from('body_logs').insert({ member_id: m.member_id, logged_on: dia(new Date()), weight_kg: w, waist_cm: c, mood });
+    if (error) { err('Não foi possível guardar: ' + error.message); ev.submitter.disabled = false; return; }
+    S.flashP = 'Registo guardado.'; avalM(el);
+  };
+}
+
+// painel de gestão: membros ativos que deixaram de treinar (sinal de abandono)
+async function emRisco(el) {
+  if (!el) return;
+  const [ms, lg] = await Promise.all([
+    db.from('member_status').select('member_id, full_name, status').in('status', ['active', 'expiring']).order('full_name'),
+    db.from('workout_logs').select('member_id, done_at').gte('done_at', new Date(Date.now() - 21 * 864e5).toISOString()).order('done_at', { ascending: false }).limit(1000)]);
+  if (ms.error || lg.error) return;
+  const hd = dia(new Date()), ult = {};
+  lg.data.forEach(l => { if (!ult[l.member_id]) ult[l.member_id] = dia(l.done_at); });
+  const lista = ms.data.map(x => ({ ...x, d: ult[x.member_id] ? Math.round((ud(hd) - ud(ult[x.member_id])) / 864e5) : null }))
+    .filter(x => x.d === null || x.d >= 10).sort((a, b) => (b.d ?? 99) - (a.d ?? 99)).slice(0, 6);
+  el.innerHTML = `<div class="card" style="margin-top:12px"><h3 style="margin:0">Alunos em risco de abandono</h3>
+    <p class="mu" style="margin:4px 0 8px">Membros ativos sem treinar há 10 dias ou mais.</p>
+    ${lista.length ? lista.map(x => `<div class="rg"><strong>${esc(x.full_name)}</strong><span class="mu">${x.d === null ? 'há mais de 21 dias' : 'há ' + x.d + ' dias'}</span></div>`).join('') : '<p class="mu" style="margin:0">Todos os alunos ativos treinaram nos últimos 10 dias.</p>'}</div>`;
 }
 
 async function pt(el) {
@@ -640,6 +753,7 @@ async function pt(el) {
 
 const pos = (a, b) => a.position - b.position;
 const dia = t => new Date(t).toLocaleDateString('sv-SE', { timeZone: 'Africa/Luanda' });
+const ym = d => dia(d).slice(0, 7); // 'AAAA-MM' no fuso de Luanda (faltava definir: Faturação e ficha do PT usavam-no)
 const ir = s => { S.sec[S.mode] = s; shell(); };
 const gruposDe = d => [...new Set(d.workout_items.map(i => i.exercises?.muscle_group).filter(Boolean))].join(', ');
 
@@ -660,12 +774,13 @@ async function carregaMembro() {
   if (error) throw error;
   if (!m) return null;
   const desde = new Date(Date.now() - 120 * 864e5).toISOString();
-  const [pl, lg, sb, av] = await Promise.all([
+  const [pl, lg, sb, av, bl] = await Promise.all([
     db.from('workout_plans').select('name, workout_days(id, label, position, workout_items(sets, reps, position, exercises(name, muscle_group, video_url)))')
       .eq('member_id', m.member_id).eq('active', true).order('created_at', { ascending: false }).limit(1),
     db.from('workout_logs').select('day_id, done_at').eq('member_id', m.member_id).gte('done_at', desde).order('done_at', { ascending: false }).limit(500),
     db.from('subscriptions').select('start_date, end_date').eq('member_id', m.member_id).order('end_date', { ascending: false }).limit(1),
-    db.from('assessments').select('assessed_at, weight_kg').eq('member_id', m.member_id).not('weight_kg', 'is', null).order('assessed_at', { ascending: true }).limit(24)]);
+    db.from('assessments').select('assessed_at, weight_kg').eq('member_id', m.member_id).not('weight_kg', 'is', null).order('assessed_at', { ascending: true }).limit(24),
+    db.from('body_logs').select('logged_on, weight_kg, waist_cm, mood').eq('member_id', m.member_id).order('logged_on', { ascending: false }).order('created_at', { ascending: false }).limit(120)]);
   if (pl.error || lg.error) throw pl.error || lg.error;
   const plan = pl.data[0] || null, days = plan ? plan.workout_days.sort(pos) : [];
   days.forEach(d => d.workout_items.sort(pos));
@@ -685,19 +800,22 @@ async function carregaMembro() {
     if (![0, 1, 2, 3, 4, 5, 6].some(k => treinados.has(addD(a, k)))) break;
     streak++;
   }
+  const aval = (av.data || []).map(x => ({ d: x.assessed_at, w: +x.weight_kg }));
+  const corpo = bl.error ? null : (bl.data || []); // null = tabela ainda não existe: o app esconde a funcionalidade
+  const pontos = [...aval, ...(corpo || []).filter(x => x.weight_kg != null).map(x => ({ d: x.logged_on, w: +x.weight_kg }))].sort((a, b) => a.d < b.d ? -1 : a.d > b.d ? 1 : 0);
   return {
     m, plan, days, feito, ciclo, semana, nSem, streak, hd,
     meta: Math.min(6, Math.max(2, days.length || 3)),
     mes: logs.filter(l => dia(l.done_at).startsWith(hd.slice(0, 7))).length,
     ultimo: last ? dia(last.done_at) : null,
-    aval: (av.data || []).map(x => ({ d: x.assessed_at, w: +x.weight_kg })),
+    corpo, pontos,
     hoje: days.length ? days[feito ? i : (i + 1) % days.length] : null };
 }
 
 async function membro(el) {
   let D; try { D = await carregaMembro(); } catch (e) { return el.innerHTML = fail(e); }
   if (!D) return el.innerHTML = vazio('id-badge', 'Ainda não tens ficha de membro', 'Pede à receção para criar a tua ficha. Depois disso vês aqui o teu treino, a tua evolução e a tua mensalidade.');
-  const { m, hoje, feito, ciclo, semana, nSem, meta, streak, aval, mes } = D;
+  const { m, hoje, feito, ciclo, semana, nSem, meta, streak, pontos, mes } = D;
   const flash = S.flashM ? `<p class="ok" role="status">${esc(S.flashM)}</p>` : ''; S.flashM = '';
   const data = new Date().toLocaleDateString('pt-PT', { timeZone: 'Africa/Luanda', weekday: 'long', day: 'numeric', month: 'long' });
   const nEx = hoje ? hoje.workout_items.length : 0;
@@ -723,14 +841,16 @@ async function membro(el) {
       ${ago ? `<div><strong>${ago}</strong><span class="mu">último treino</span></div>` : ''}</div></div>`;
 
   let ev;
-  if (aval.length >= 2) {
-    const a = aval[0], b = aval[aval.length - 1];
-    ev = `<div class="card"><span class="mu">A tua evolução</span><div class="delta">${sinal(b.w - a.w)} kg</div><span class="mu">desde ${dm(a.d)} · agora ${f1(b.w)} kg</span><br><button class="btn ghost" id="va" style="margin-top:12px">Ver avaliação</button></div>`;
-  } else if (aval.length === 1) {
-    ev = `<div class="card"><span class="mu">A tua evolução</span><div class="delta">${f1(aval[0].w)} kg</div><span class="mu">Ponto de partida registado. Na próxima avaliação vês aqui a tua evolução.</span></div>`;
+  if (pontos.length >= 2) {
+    const a = pontos[0], b = pontos[pontos.length - 1];
+    ev = `<div class="card${oculta() ? ' oculto' : ''}"><span class="mu">A tua evolução</span><div class="delta">${sinal(b.w - a.w)} kg</div><span class="mu pv">desde ${dm(a.d)} · agora ${f1(b.w)} kg</span><br><button class="btn ghost" id="va" style="margin-top:12px">Ver progresso</button></div>`;
+  } else if (pontos.length === 1) {
+    ev = `<div class="card${oculta() ? ' oculto' : ''}"><span class="mu">A tua evolução</span><div class="delta">${f1(pontos[0].w)} kg</div><span class="mu">Ponto de partida registado. Continua a registar para veres a tua evolução.</span></div>`;
   } else {
-    ev = `<div class="card"><span class="mu">A tua evolução</span><div style="font-size:18px;font-weight:700;margin:4px 0">Ainda sem avaliação física</div><span class="mu">É o ponto de partida: peso, medidas e % de gordura. Pede ao teu PT para a fazer.</span></div>`;
+    ev = `<div class="card"><span class="mu">A tua evolução</span><div style="font-size:18px;font-weight:700;margin:4px 0">Ainda sem pesagens</div><span class="mu">Regista o teu peso no separador Progresso, ou pede ao teu PT para te avaliar.</span></div>`;
   }
+  const reg = (D.corpo || []).find(x => x.logged_on === D.hd);
+  const pesar = D.corpo === null ? '' : `<button class="card row open" id="pz" type="button" style="width:100%;text-align:left;border:0;font:inherit;color:inherit"><div class="who"><span class="ki t" style="margin:0;flex:none"><i class="ti ti-scale" aria-hidden="true"></i></span><div><strong>${reg ? 'Registo de hoje feito' : 'Já te pesaste hoje?'}</strong><br><span class="mu">${reg ? 'Podes juntar outro quando quiseres.' : 'Regista o teu peso e como te sentes em 5 segundos.'}</span></div></div><i class="ti ti-chevron-right mu" aria-hidden="true"></i></button>`;
 
   const renova = ['expired', 'expiring', 'none'].includes(m.status), left = ciclo ? Math.max(0, ciclo.left) : 0;
   const mens = `<div class="card"><div class="row"><span class="mu">Mensalidade</span><span class="tag ${m.status}">${STATE[m.status]}</span></div>
@@ -743,9 +863,10 @@ async function membro(el) {
     <div style="font-weight:700;font-size:18px;overflow-wrap:anywhere">${esc(m.full_name || S.name)}</div>
     <span class="hl" style="margin-top:8px">Código de acesso</span><div class="cd">${esc(m.code)}</div></div></div>`;
 
-  el.innerHTML = `${flash}${hero}${sem}<div class="grid g2">${ev}${mens}</div>${cartao}`;
+  el.innerHTML = `${flash}${hero}${sem}${pesar}<div class="grid g2">${ev}${mens}</div>${cartao}`;
   if ($id('vt')) $id('vt').onclick = () => ir('treino');
   if ($id('va')) $id('va').onclick = () => ir('avaliacao');
+  if ($id('pz')) $id('pz').onclick = () => ir('avaliacao');
   if ($id('rn')) $id('rn').onclick = () => ir('pagamentos');
 }
 
