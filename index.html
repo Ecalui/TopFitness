@@ -249,6 +249,15 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt
 const norm = v => { const d = v.replace(/\D/g, ''); return d.length > 9 && d.startsWith('244') ? d.slice(3) : d; };
 const kz = n => new Intl.NumberFormat('pt-AO').format(n) + ' Kz';
 const dm = d => d ? new Date(d + 'T00:00').toLocaleDateString('pt-PT', {day:'2-digit', month:'2-digit'}) : '—';
+// Pagamentos: o original usava estas funções sem as definir (Faturação e Pagamentos do aluno rebentavam).
+// Chaves do método = valores guardados em payments.method. CONFIRMAR com a base de dados.
+const METODO = new Proxy({ cash: 'Numerário', transfer: 'Transferência', multicaixa: 'Multicaixa Express' },
+  { get: (o, k) => o[k] || (typeof k === 'string' && k ? k.charAt(0).toUpperCase() + k.slice(1).replace(/_/g, ' ') : '—') });
+const PSEL = 'id, receipt_no, amount, method, paid_at, member_id, plans(name)';
+const rno = p => 'Recibo n.º ' + (p.receipt_no == null ? '—' : String(p.receipt_no).padStart(5, '0'));
+const dh = d => d ? new Date(d).toLocaleString('pt-PT', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Luanda' }) : '—';
+let NOMES = {};
+const nome = p => NOMES[p.member_id] || '—';
 const STATE = {active:'Ativo', expiring:'A expirar', expired:'Expirado', suspended:'Suspenso', none:'Sem plano'};
 const MODES = {gestao:'Gestão', pt:'Personal Trainer', membro:'Meu perfil'};
 let S = {};
@@ -367,6 +376,7 @@ async function faturacao(el) {
     db.from('member_status').select('member_id, full_name, phone, status').order('full_name'),
     db.from('plans').select('*').eq('active', true).order('price')]);
   const e = pay.error || m.error || pl.error; if (e) return el.innerHTML = fail(e);
+  NOMES = Object.fromEntries(m.data.map(x => [x.member_id, x.full_name]));
   const recebido = pay.data.filter(p => ym(p.paid_at) === ym(new Date())).reduce((s, p) => s + +p.amount, 0);
   const c = (l, v) => `<div class="card"><span class="mu">${l}</span><div class="big">${v}</div></div>`;
   const pre = S.prefill; S.prefill = null;
@@ -395,6 +405,7 @@ async function faturacao(el) {
 async function recibo(el) {
   const { data: p, error } = await db.from('payments').select(PSEL).eq('id', S.recibo).single();
   if (error) { S.recibo = null; return el.innerHTML = fail(error); }
+  if (!NOMES[p.member_id]) { const r = await db.from('member_status').select('full_name').eq('member_id', p.member_id).maybeSingle(); if (r.data) NOMES[p.member_id] = r.data.full_name; }
   const k = (a, b) => `<div class="row kv"><span class="mu">${a}</span><strong>${esc(b)}</strong></div>`;
   el.innerHTML = `<div class="card" id="rec"><h2>${esc(S.gym)}</h2><p class="mu">${rno(p)}</p>
       ${k('Membro', nome(p))}${k('Plano', p.plans?.name || '—')}${k('Método', METODO[p.method])}${k('Data', dh(p.paid_at))}${k('Valor', kz(p.amount))}
