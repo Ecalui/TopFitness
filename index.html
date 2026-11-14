@@ -286,15 +286,15 @@ function loginView(msg = '') {
   app.innerHTML = `<div class="lg-wrap"><div class="lg-brand"><img src="${LOGO_BIG}" alt="Ginásio Top Fitness"><p>Treinos, mensalidades e evolução num só lugar.</p></div>
     <div class="card lg-form"><h1>Entrar</h1>
     <p class="mu">Membros entram com o telefone. A equipa pode usar o email.</p>
-    <label>Telefone ou email<input id="id" autocomplete="username"></label>
-    <label>Palavra-passe<input id="pw" type="password" autocomplete="current-password"></label>
+    <label>Telefone ou email<input id="id" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false"></label>
+    <label>Palavra-passe<input id="pw" type="password" autocomplete="current-password" autocapitalize="off" autocorrect="off"></label>
     <p class="err" role="alert">${esc(msg)}</p>
     <button class="btn" id="go">Entrar</button><div class="inst-slot"></div></div></div>`;
   renderInstalar();
   $id('go').onclick = async () => {
     const v = $id('id').value.trim();
     if (!v.includes('@') && /[^\d\s+()-]/.test(v)) return loginView('Escreve só o número de telefone (ex.: 990000011) ou o email, não o nome.');
-    const email = v.includes('@') ? v : norm(v) + '@membros.gym';
+    const email = v.includes('@') ? v.toLowerCase() : norm(v) + '@membros.gym';
     const { error } = await db.auth.signInWithPassword({ email, password: $id('pw').value });
     error ? loginView('Não foi possível entrar (' + email + '): ' + error.message) : boot();
   };
@@ -752,7 +752,7 @@ async function avalM(el) {
 async function emRisco(el) {
   if (!el) return;
   const [ms, lg] = await Promise.all([
-    db.from('member_status').select('member_id, full_name, status').in('status', ['active', 'expiring']).order('full_name'),
+    db.from('member_status').select('member_id, full_name, phone, status').in('status', ['active', 'expiring']).order('full_name'),
     db.from('workout_logs').select('member_id, done_at').gte('done_at', new Date(Date.now() - 21 * 864e5).toISOString()).order('done_at', { ascending: false }).limit(1000)]);
   if (ms.error || lg.error) return;
   const hd = dia(new Date()), ult = {};
@@ -761,7 +761,8 @@ async function emRisco(el) {
     .filter(x => x.d === null || x.d >= 10).sort((a, b) => (b.d ?? 99) - (a.d ?? 99)).slice(0, 6);
   el.innerHTML = `<div class="card" style="margin-top:12px"><h3 style="margin:0">Alunos em risco de abandono</h3>
     <p class="mu" style="margin:4px 0 8px">Membros ativos sem treinar há 10 dias ou mais.</p>
-    ${lista.length ? lista.map(x => `<div class="rg"><strong>${esc(x.full_name)}</strong><span class="mu">${x.d === null ? 'há mais de 21 dias' : 'há ' + x.d + ' dias'}</span></div>`).join('') : '<p class="mu" style="margin:0">Todos os alunos ativos treinaram nos últimos 10 dias.</p>'}</div>`;
+    ${lista.length ? lista.map(x => { const w = waLink(x.phone, `Olá ${(x.full_name || '').trim().split(' ')[0]}, sentimos a tua falta no ${S.gym}. Está tudo bem? Quando voltas a treinar?`);
+      return `<div class="rg"><div><strong>${esc(x.full_name)}</strong><br><span class="mu">${x.d === null ? 'há mais de 21 dias' : 'há ' + x.d + ' dias'}${w ? '' : ' · sem telefone'}</span></div>${w ? `<a class="btn ghost" style="flex:0 0 auto;padding:8px 12px" href="${esc(w)}" target="_blank" rel="noopener" aria-label="Enviar WhatsApp a ${esc(x.full_name)}"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i>WhatsApp</a>` : ''}</div>`; }).join('') : '<p class="mu" style="margin:0">Todos os alunos ativos treinaram nos últimos 10 dias.</p>'}</div>`;
 }
 
 // ===== Lote 1: ginásio, instrutor, como pagar, conquistas, definições do dono =====
