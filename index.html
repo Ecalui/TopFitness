@@ -212,6 +212,19 @@ body.is-login main{max-width:1000px}
 .oculto .pv{color:transparent;text-shadow:0 0 10px var(--tx);user-select:none}
 .oculto .chart,.oculto svg{filter:blur(7px)}
 .oculto .big,.oculto .delta{color:transparent;text-shadow:0 0 10px var(--tx);user-select:none}
+/* lote 1 */
+textarea{width:100%;background:var(--card);color:var(--tx);border:1px solid var(--line);border-radius:16px;padding:14px 16px;font:inherit;margin:6px 0 14px;resize:vertical}
+a.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;box-sizing:border-box}
+.acts{display:flex;flex-wrap:wrap;gap:8px}
+.acts .btn{flex:1 1 140px}
+.aviso{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:none;border:0;border-top:1px solid var(--line);padding:12px 0;font:inherit;color:var(--tx);cursor:pointer}
+.aviso i:first-child{font-size:22px;color:var(--ac)}
+.aviso span{flex:1}
+.cqs{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px}
+.cq{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:12px 6px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:13px;opacity:.6}
+.cq .ci{display:grid;place-items:center;width:44px;height:44px;border-radius:50%;background:var(--line);font-size:24px}
+.cq.on{opacity:1;border-color:var(--ac)}
+.cq.on .ci{background:var(--ac);color:var(--acx)}
 </style>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.49.0/dist/tabler-icons.min.css">
 </head>
@@ -281,10 +294,11 @@ function loginView(msg = '') {
 async function boot() {
   const { data: { user } } = await db.auth.getUser();
   if (!user) return loginView();
-  const [p, r, g] = await Promise.all([
+  const [p, r, g, gi] = await Promise.all([
     db.from('profiles').select('full_name').eq('id', user.id).maybeSingle(),
     db.from('user_roles').select('role').eq('user_id', user.id),
-    db.from('gyms').select('name').limit(1).maybeSingle()]);
+    db.from('gyms').select('name').limit(1).maybeSingle(),
+    db.from('gyms').select('info').limit(1).maybeSingle()]);
   const roles = (r.data || []).map(x => x.role), has = x => roles.includes(x);
   const modes = [];
   if (has('owner') || has('admin') || has('receptionist')) modes.push('gestao');
@@ -292,14 +306,14 @@ async function boot() {
   if (has('member')) modes.push('membro');
   if (!modes.length) { await db.auth.signOut(); return loginView('Esta conta ainda não tem acesso. Fala com a receção.'); }
   let last = null; try { last = localStorage.getItem('mode'); } catch {}
-  S = { roles, uid: user.id, name: p.data?.full_name || '', gym: g.data?.name || 'Ginásio', modes, mode: modes.includes(last) ? last : modes[0] };
+  S = { roles, uid: user.id, name: p.data?.full_name || '', gym: g.data?.name || 'Ginásio', info: gi.error ? null : (gi.data?.info || {}), modes, mode: modes.includes(last) ? last : modes[0] };
   shell();
 }
 
 const NAV = {
-  gestao: [['dash', 'Painel', 'layout-dashboard'], ['planos', 'Planos', 'tags'], ['membros', 'Membros', 'users'], ['faturacao', 'Faturação', 'receipt']],
+  gestao: [['dash', 'Painel', 'layout-dashboard'], ['planos', 'Planos', 'tags'], ['membros', 'Membros', 'users'], ['faturacao', 'Faturação', 'receipt'], ['config', 'Ginásio', 'settings']],
   pt: [['alunos', 'Alunos', 'users'], ['exercicios', 'Exercícios', 'barbell'], ['treinos', 'Treinos', 'clipboard-list']],
-  membro: [['inicio', 'Início', 'home'], ['treino', 'Treino', 'barbell'], ['avaliacao', 'Progresso', 'chart-line'], ['pagamentos', 'Pagamentos', 'receipt']]};
+  membro: [['inicio', 'Início', 'home'], ['treino', 'Treino', 'barbell'], ['avaliacao', 'Progresso', 'chart-line'], ['pagamentos', 'Pagamentos', 'receipt'], ['ginasio', 'Ginásio', 'map-pin']]};
 
 function splash() {
   const d = document.createElement('div'); d.className = 'splash'; d.setAttribute('aria-hidden', 'true');
@@ -313,7 +327,7 @@ function shell() {
   document.body.classList.remove('is-login');
   if (!S.welcomed) { S.welcomed = true; splash(); }
   S.sec = S.sec || {};
-  const items = NAV[S.mode], cur = S.sec[S.mode] || items[0][0];
+  const items = NAV[S.mode].filter(([k]) => !(k === 'ginasio' && S.info == null) && !(k === 'config' && (S.info == null || !(S.roles.includes('owner') || S.roles.includes('admin'))))), cur = S.sec[S.mode] || items[0][0];
   const sw = S.modes.length > 1
     ? `<nav class="modes no-print" aria-label="Modo">${S.modes.map(m => `<button data-m="${m}" aria-pressed="${m === S.mode}">${MODES[m]}</button>`).join('')}</nav>` : '';
   const nav = items.length > 1
@@ -679,9 +693,9 @@ function corpoStaff(rows, ePt) {
 }
 
 async function avalM(el) {
-  const { data: m, error } = await db.from('member_status').select('member_id').eq('profile_id', S.uid).maybeSingle();
-  if (error) return el.innerHTML = fail(error);
-  if (!m) return el.innerHTML = vazio('id-badge', 'Ainda não tens ficha de membro', 'Pede à receção para criar a tua ficha.');
+  let D; try { D = await carregaMembro(); } catch (e) { return el.innerHTML = fail(e); }
+  if (!D) return el.innerHTML = vazio('id-badge', 'Ainda não tens ficha de membro', 'Pede à receção para criar a tua ficha.');
+  const m = D.m;
   const [bl, av] = await Promise.all([
     db.from('body_logs').select('id, logged_on, weight_kg, waist_cm, mood').eq('member_id', m.member_id).order('logged_on', { ascending: false }).order('created_at', { ascending: false }).limit(120),
     db.from('assessments').select('*').eq('member_id', m.member_id).order('assessed_at', { ascending: false }).limit(12)]);
@@ -693,7 +707,7 @@ async function avalM(el) {
     <span class="mu">Como me sinto hoje? (opcional)</span>
     <div class="mood" role="radiogroup" aria-label="Como me sinto hoje">${MOOD.map(([ic, l], k) => `<button type="button" role="radio" aria-checked="false" data-v="${k + 1}"><i class="ti ti-${ic}" aria-hidden="true"></i><span>${l}</span></button>`).join('')}</div>
     <p class="err" id="re" role="alert"></p><button class="btn" style="width:100%">Guardar registo</button></form>`;
-  el.innerHTML = `<h2>O meu progresso</h2>${flash}<div id="pgz" class="${oculta() ? 'oculto' : ''}">${corpo === null ? '' : form + pesagens(corpo, true)}
+  el.innerHTML = `<h2>O meu progresso</h2>${flash}<div id="pgz" class="${oculta() ? 'oculto' : ''}">${corpo === null ? '' : form + pesagens(corpo, true)}${conquistas(D)}
     <h3>Avaliações do PT</h3>${av.error ? fail(av.error) : resumoAval(av.data)}</div>`;
   if (corpo === null) return;
   const radios = [...el.querySelectorAll('.mood button')];
@@ -739,6 +753,71 @@ async function emRisco(el) {
     ${lista.length ? lista.map(x => `<div class="rg"><strong>${esc(x.full_name)}</strong><span class="mu">${x.d === null ? 'há mais de 21 dias' : 'há ' + x.d + ' dias'}</span></div>`).join('') : '<p class="mu" style="margin:0">Todos os alunos ativos treinaram nos últimos 10 dias.</p>'}</div>`;
 }
 
+// ===== Lote 1: ginásio, instrutor, como pagar, conquistas, definições do dono =====
+const wa = n => { const d = String(n || '').replace(/\D/g, ''); return d.length === 9 ? '244' + d : d; };
+const link = u => /^https?:\/\//i.test(u || '') ? u : '';
+const waLink = (n, txt) => wa(n) ? `https://wa.me/${wa(n)}?text=${encodeURIComponent(txt || '')}` : '';
+const linhasHorario = t => String(t || '').split('\n').map(x => x.trim()).filter(Boolean).map(x => { const m = x.match(/^(.*?):\s+(.*)$/); return m ? [m[1], m[2]] : [x, '']; });
+
+async function ginasioM(el) {
+  const i = S.info || {}, ins = await db.rpc('my_instructor');
+  const inst = ins.error ? undefined : ins.data; // undefined = função ainda não criada: esconde o cartão
+  const mapa = link(i.mapa_url) || (i.morada ? 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(i.morada) : '');
+  const tel = wa(i.telefone) ? 'tel:+' + wa(i.telefone) : '', w = waLink(i.whatsapp, `Olá! Sou ${S.name} e gostava de falar com o ${S.gym}.`);
+  const hor = linhasHorario(i.horario), iw = inst && inst.telefone ? waLink(inst.telefone, `Olá ${inst.nome}, sou ${S.name}.`) : '';
+  const bt = (href, ic, t, ghost) => `<a class="btn${ghost ? ' ghost' : ''}" href="${esc(href)}" target="_blank" rel="noopener"><i class="ti ti-${ic}" aria-hidden="true"></i>${t}</a>`;
+  const contactos = i.morada || tel || w ? `<div class="card"><h3 style="margin:0 0 6px">${esc(S.gym)}</h3>${i.morada ? `<p style="margin:0 0 12px">${esc(i.morada)}</p>` : ''}
+    <div class="acts">${mapa ? bt(mapa, 'map-pin', 'Abrir no mapa', true) : ''}${tel ? bt(tel, 'phone', 'Ligar', true) : ''}${w ? bt(w, 'brand-whatsapp', 'WhatsApp') : ''}</div></div>` : '';
+  const horario = hor.length ? `<div class="card"><h3 style="margin:0 0 6px">Horário</h3>${hor.map(([a, b]) => `<div class="rg"><span>${esc(a)}</span><strong>${esc(b)}</strong></div>`).join('')}</div>` : '';
+  const instr = inst === undefined ? '' : inst && inst.nome
+    ? `<div class="card"><span class="mu">O teu instrutor</span><div class="big">${esc(inst.nome)}</div>${iw ? `<div class="acts" style="margin-top:10px">${bt(iw, 'brand-whatsapp', 'Falar com o instrutor')}</div>` : ''}</div>`
+    : '<div class="card"><span class="mu">O teu instrutor</span><p style="margin:6px 0 0">Ainda não tens instrutor atribuído. Pergunta na receção.</p></div>';
+  const corpo = contactos + horario + instr;
+  el.innerHTML = `<h2>O meu ginásio</h2>${i.exemplo ? '<p class="mu">Dados de exemplo: o ginásio ainda não preencheu os seus dados reais.</p>' : ''}` +
+    (corpo || vazio('map-pin', 'Ainda sem informação', 'O ginásio ainda não preencheu a morada, o horário e os contactos.'));
+}
+
+function conquistas(D) {
+  const t = D.total, s = D.streak, p = (D.corpo || []).length;
+  const L = [['Primeiro treino', 'barbell', t, 1], ['10 treinos', 'medal', t, 10], ['25 treinos', 'medal', t, 25], ['50 treinos', 'trophy', t, 50], ['100 treinos', 'trophy', t, 100],
+    ['2 semanas seguidas', 'flame', s, 2], ['4 semanas seguidas', 'flame', s, 4], ['8 semanas seguidas', 'flame', s, 8]];
+  if (D.corpo !== null) L.push(['Primeira pesagem', 'scale', p, 1]);
+  const ok = L.filter(x => x[2] >= x[3]).length;
+  return `<h3>Conquistas <span class="mu">${ok} de ${L.length}</span></h3><div class="cqs">${L.map(([n, ic, v, g]) =>
+    `<div class="cq${v >= g ? ' on' : ''}"><span class="ci"><i class="ti ti-${ic}" aria-hidden="true"></i></span><strong>${n}</strong><span class="mu">${v >= g ? 'Conquistada' : Math.min(v, g) + ' de ' + g}</span></div>`).join('')}</div>`;
+}
+
+// ecrã do dono: o que os alunos veem em "Ginásio" e em "Como pagar"
+async function config(el) {
+  const { data: g, error } = await db.from('gyms').select('id, name, info').limit(1).maybeSingle();
+  if (error || !g) return el.innerHTML = fail(error || { message: 'ginásio não encontrado' });
+  const i = g.info || {}, pg = i.pagamento || {}, flash = S.flashC ? `<p class="ok" role="status">${esc(S.flashC)}</p>` : ''; S.flashC = '';
+  const f = (n, l, v, ph = '') => `<label>${l}<input name="${n}" value="${esc(v)}" placeholder="${esc(ph)}" autocomplete="off"></label>`;
+  el.innerHTML = `<h2>Ginásio</h2><p class="mu">É isto que os alunos veem no separador Ginásio e em "Como pagar".</p>${flash}
+    ${i.exemplo ? '<p class="err" role="alert">Os alunos estão a ver dados de EXEMPLO. Preenche os dados reais e guarda.</p>' : ''}
+    <form class="card" id="cf" novalidate>
+      <div class="fg">${f('morada', 'Morada', i.morada)}${f('mapa_url', 'Link do mapa (opcional)', i.mapa_url, 'https://maps.google.com/...')}</div>
+      <div class="fg">${f('telefone', 'Telefone', i.telefone, '+244 9...')}${f('whatsapp', 'WhatsApp', i.whatsapp, '9... ou 244...')}</div>
+      <label>Horário (uma linha por dia, ex.: Seg a Sex: 06:00 - 21:00)<textarea name="horario" rows="4">${esc(i.horario)}</textarea></label>
+      <h3>Como pagar</h3>
+      <div class="fg">${f('banco', 'Banco', pg.banco)}${f('titular', 'Titular', pg.titular)}</div>
+      ${f('iban', 'IBAN', pg.iban)}
+      <label>Instruções para o aluno<textarea name="instrucoes" rows="3">${esc(pg.instrucoes)}</textarea></label>
+      <p class="err" id="ce" role="alert"></p><button class="btn" style="width:100%">Guardar</button></form>`;
+  $id('cf').onsubmit = async ev => {
+    ev.preventDefault();
+    const v = n => ev.target[n].value.trim(), err = t => $id('ce').textContent = t;
+    if (v('mapa_url') && !link(v('mapa_url'))) return err('O link do mapa tem de começar por http:// ou https://');
+    if (v('whatsapp') && wa(v('whatsapp')).length < 9) return err('O WhatsApp parece incompleto.');
+    const info = { ...i, exemplo: false, morada: v('morada'), mapa_url: v('mapa_url'), telefone: v('telefone'), whatsapp: v('whatsapp'), horario: v('horario'),
+      pagamento: { banco: v('banco'), titular: v('titular'), iban: v('iban'), instrucoes: v('instrucoes') } };
+    ev.submitter.disabled = true;
+    const { data, error } = await db.from('gyms').update({ info }).eq('id', g.id).select('id');
+    if (error || !data || !data.length) { err('Não foi possível guardar (só o dono ou o gestor pode editar).'); ev.submitter.disabled = false; return; }
+    S.info = info; S.flashC = 'Dados guardados. Os alunos já veem as alterações.'; config(el);
+  };
+}
+
 async function pt(el) {
   if (S.ficha) return ficha(el);
   // filtro explícito: o dono também vê todos por ser gestor, mas aqui quer só os seus alunos
@@ -774,13 +853,15 @@ async function carregaMembro() {
   if (error) throw error;
   if (!m) return null;
   const desde = new Date(Date.now() - 120 * 864e5).toISOString();
-  const [pl, lg, sb, av, bl] = await Promise.all([
-    db.from('workout_plans').select('name, workout_days(id, label, position, workout_items(sets, reps, position, exercises(name, muscle_group, video_url)))')
+  const [pl, lg, sb, av, bl, tt, pr] = await Promise.all([
+    db.from('workout_plans').select('name, created_at, workout_days(id, label, position, workout_items(sets, reps, position, exercises(name, muscle_group, video_url)))')
       .eq('member_id', m.member_id).eq('active', true).order('created_at', { ascending: false }).limit(1),
     db.from('workout_logs').select('day_id, done_at').eq('member_id', m.member_id).gte('done_at', desde).order('done_at', { ascending: false }).limit(500),
     db.from('subscriptions').select('start_date, end_date').eq('member_id', m.member_id).order('end_date', { ascending: false }).limit(1),
     db.from('assessments').select('assessed_at, weight_kg').eq('member_id', m.member_id).not('weight_kg', 'is', null).order('assessed_at', { ascending: true }).limit(24),
-    db.from('body_logs').select('logged_on, weight_kg, waist_cm, mood').eq('member_id', m.member_id).order('logged_on', { ascending: false }).order('created_at', { ascending: false }).limit(120)]);
+    db.from('body_logs').select('logged_on, weight_kg, waist_cm, mood').eq('member_id', m.member_id).order('logged_on', { ascending: false }).order('created_at', { ascending: false }).limit(120),
+    db.from('workout_logs').select('id', { count: 'exact', head: true }).eq('member_id', m.member_id),
+    db.rpc('my_plan_price')]);
   if (pl.error || lg.error) throw pl.error || lg.error;
   const plan = pl.data[0] || null, days = plan ? plan.workout_days.sort(pos) : [];
   days.forEach(d => d.workout_items.sort(pos));
@@ -808,7 +889,7 @@ async function carregaMembro() {
     meta: Math.min(6, Math.max(2, days.length || 3)),
     mes: logs.filter(l => dia(l.done_at).startsWith(hd.slice(0, 7))).length,
     ultimo: last ? dia(last.done_at) : null,
-    corpo, pontos,
+    corpo, pontos, total: tt.count || 0, preco: pr.error || !pr.data || pr.data.preco == null ? null : +pr.data.preco, planoDesde: plan ? plan.created_at : null,
     hoje: days.length ? days[feito ? i : (i + 1) % days.length] : null };
 }
 
@@ -849,12 +930,20 @@ async function membro(el) {
   } else {
     ev = `<div class="card"><span class="mu">A tua evolução</span><div style="font-size:18px;font-weight:700;margin:4px 0">Ainda sem pesagens</div><span class="mu">Regista o teu peso no separador Progresso, ou pede ao teu PT para te avaliar.</span></div>`;
   }
+  const avs = [];
+  if (m.status === 'suspended') avs.push(['alert-triangle', 'A tua inscrição está suspensa. Fala com a receção.', 'pagamentos']);
+  else if (m.status === 'expired') avs.push(['alert-circle', `A tua mensalidade venceu em ${dm(m.end_date)}${D.preco != null ? ' (' + kz(D.preco) + ')' : ''}. Renova para continuares a treinar.`, 'pagamentos']);
+  else if (ciclo && ciclo.left >= 1 && ciclo.left <= 7) avs.push(['calendar-due', ciclo.left === 1 ? 'A tua mensalidade vence hoje.' : `A tua mensalidade vence em ${ciclo.left} dias.`, 'pagamentos']);
+  if (D.planoDesde && Math.round((ud(D.hd) - ud(dia(D.planoDesde))) / 864e5) <= 7) avs.push(['clipboard-check', `O teu plano de treino foi atualizado em ${dm(dia(D.planoDesde))}.`, 'treino']);
+  if (hoje && D.ultimo && n(D.ultimo) >= 6) avs.push(['barbell', `Já não treinas há ${n(D.ultimo)} dias. O próximo é o Treino ${esc(hoje.label)}.`, 'treino']);
+  const avisos = avs.length ? `<div class="card"><h3 style="margin:0 0 2px">Avisos</h3>${avs.slice(0, 3).map(([ic, t, go]) => `<button class="aviso" type="button" data-go="${go}"><i class="ti ti-${ic}" aria-hidden="true"></i><span>${t}</span><i class="ti ti-chevron-right mu" aria-hidden="true"></i></button>`).join('')}</div>` : '';
   const reg = (D.corpo || []).find(x => x.logged_on === D.hd);
   const pesar = D.corpo === null ? '' : `<button class="card row open" id="pz" type="button" style="width:100%;text-align:left;border:0;font:inherit;color:inherit"><div class="who"><span class="ki t" style="margin:0;flex:none"><i class="ti ti-scale" aria-hidden="true"></i></span><div><strong>${reg ? 'Registo de hoje feito' : 'Já te pesaste hoje?'}</strong><br><span class="mu">${reg ? 'Podes juntar outro quando quiseres.' : 'Regista o teu peso e como te sentes em 5 segundos.'}</span></div></div><i class="ti ti-chevron-right mu" aria-hidden="true"></i></button>`;
 
   const renova = ['expired', 'expiring', 'none'].includes(m.status), left = ciclo ? Math.max(0, ciclo.left) : 0;
   const mens = `<div class="card"><div class="row"><span class="mu">Mensalidade</span><span class="tag ${m.status}">${STATE[m.status]}</span></div>
     <div style="font-size:20px;font-weight:700;margin:4px 0 10px">${esc(m.plan_name || 'Sem plano')}</div>
+    ${D.preco != null ? `<p class="mu" style="margin:-4px 0 10px">${m.status === 'active' ? 'Valor da mensalidade' : 'Valor a pagar'}: <strong>${kz(D.preco)}</strong></p>` : ''}
     ${ciclo ? `<div class="bar"><i style="width:${Math.min(100, left / (ciclo.total || 1) * 100)}%"></i></div>
       <p class="mu" style="margin:8px 0 0">${left > 0 ? `Renova em ${dm(m.end_date)} · faltam ${left} dia${left === 1 ? '' : 's'}` : `Terminou em ${dm(m.end_date)}`}</p>` : '<p class="mu" style="margin:0">Ainda sem mensalidade ativa.</p>'}
     ${renova ? '<button class="btn" id="rn" style="margin-top:12px">Renovar mensalidade</button>' : ''}</div>`;
@@ -863,10 +952,11 @@ async function membro(el) {
     <div style="font-weight:700;font-size:18px;overflow-wrap:anywhere">${esc(m.full_name || S.name)}</div>
     <span class="hl" style="margin-top:8px">Código de acesso</span><div class="cd">${esc(m.code)}</div></div></div>`;
 
-  el.innerHTML = `${flash}${hero}${sem}${pesar}<div class="grid g2">${ev}${mens}</div>${cartao}`;
+  el.innerHTML = `${flash}${hero}${avisos}${sem}${pesar}<div class="grid g2">${ev}${mens}</div>${cartao}`;
   if ($id('vt')) $id('vt').onclick = () => ir('treino');
   if ($id('va')) $id('va').onclick = () => ir('avaliacao');
   if ($id('pz')) $id('pz').onclick = () => ir('avaliacao');
+  el.querySelectorAll('.aviso').forEach(b => b.onclick = () => ir(b.dataset.go));
   if ($id('rn')) $id('rn').onclick = () => ir('pagamentos');
 }
 
@@ -954,17 +1044,28 @@ async function treinoM(el) {
 }
 
 async function pagM(el) {
-  const { data: m, error } = await db.from('member_status').select('member_id, plan_name, end_date, status').eq('profile_id', S.uid).maybeSingle();
+  const { data: m, error } = await db.from('member_status').select('member_id, plan_name, end_date, status, full_name, code').eq('profile_id', S.uid).maybeSingle();
   if (error) return el.innerHTML = fail(error);
   if (!m) return el.innerHTML = '<p class="mu">Ainda não tens ficha de membro.</p>';
-  const { data: ps, error: e2 } = await db.from('payments').select('id, receipt_no, amount, method, paid_at, plans(name)')
-    .eq('member_id', m.member_id).order('paid_at', { ascending: false }).limit(20);
+  const [pq, pr] = await Promise.all([db.from('payments').select('id, receipt_no, amount, method, paid_at, plans(name)')
+    .eq('member_id', m.member_id).order('paid_at', { ascending: false }).limit(20), db.rpc('my_plan_price')]);
+  const { data: ps, error: e2 } = pq;
   if (e2) return el.innerHTML = fail(e2);
+  const preco = pr.error || !pr.data || pr.data.preco == null ? null : +pr.data.preco;
+  const info = S.info || {}, pg = info.pagamento || {};
+  const wz = waLink(info.whatsapp, `Olá! Segue o comprovativo do pagamento da mensalidade. Nome: ${m.full_name || S.name}. Código: ${m.code}.`);
+  const como = pg.iban || pg.instrucoes
+    ? `<div class="card"><span class="mu">Como pagar${info.exemplo ? ' · dados de exemplo' : ''}</span>
+      ${pg.instrucoes ? `<p style="margin:6px 0 10px">${esc(pg.instrucoes)}</p>` : ''}
+      ${pg.iban ? `<div class="rg"><span class="mu">${esc(pg.banco || 'IBAN')}${pg.titular ? ' · ' + esc(pg.titular) : ''}</span></div><div class="rg"><strong style="overflow-wrap:anywhere">${esc(pg.iban)}</strong><button class="btn ghost" id="cp" type="button">Copiar</button></div>` : ''}
+      ${wz ? `<a class="btn" style="margin-top:10px" href="${esc(wz)}" target="_blank" rel="noopener"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i>Enviar comprovativo</a>` : ''}</div>`
+    : '<div class="card"><span class="mu">Como pagar</span><p style="margin:6px 0 0">Paga na receção, por transferência bancária ou por Multicaixa Express. A receção regista o pagamento e a tua mensalidade é atualizada.</p></div>';
   el.innerHTML = `<h2>Pagamentos</h2><div class="card"><span class="mu">Mensalidade · ${m.status === 'expired' ? 'venceu' : 'vence'} em ${dm(m.end_date)}</span>
-      <div class="big">${m.plan_name ? esc(m.plan_name) : 'Sem plano'}</div></div>
-    <div class="card"><span class="mu">Como pagar</span><p style="margin:6px 0 0">Paga na receção, por transferência bancária ou por Multicaixa Express. A receção regista o pagamento e a tua mensalidade é atualizada.</p></div>
+      <div class="big">${m.plan_name ? esc(m.plan_name) : 'Sem plano'}</div>${preco != null ? `<div class="mu">${m.status === 'active' ? 'Valor da mensalidade' : 'Valor a pagar'}: <strong>${kz(preco)}</strong></div>` : ''}</div>
+    ${como}
     <h3>Histórico</h3><div class="list">${ps.length ? ps.map(p => `<div class="card row"><div><strong>${rno(p)}</strong><br><span class="mu">${esc(p.plans?.name || '')} · ${METODO[p.method]} · ${dh(p.paid_at)}</span></div>
       <strong>${kz(p.amount)}</strong></div>`).join('') : vazio('receipt', 'Ainda sem pagamentos', 'Quando a receção registar o teu primeiro pagamento, o recibo aparece aqui.')}</div>`;
+  if ($id('cp')) $id('cp').onclick = async () => { try { await navigator.clipboard.writeText(pg.iban); $id('cp').textContent = 'Copiado'; } catch { $id('cp').textContent = 'Seleciona e copia'; } };
 }
 
 // Se a sessão mudar noutro separador (outro utilizador a entrar), esta página reflete o utilizador real
@@ -972,7 +1073,7 @@ db.auth.onAuthStateChange((_e, s) => {
   if (S.uid && (!s || s.user.id !== S.uid)) setTimeout(() => s ? boot() : loginView(), 0);
 });
 
-const VIEWS = { gestao: { dash, planos, membros, faturacao }, pt: { alunos: pt, exercicios, treinos }, membro: { inicio: membro, treino: treinoM, avaliacao: avalM, pagamentos: pagM } };
+const VIEWS = { gestao: { dash, planos, membros, faturacao, config }, pt: { alunos: pt, exercicios, treinos }, membro: { inicio: membro, treino: treinoM, avaliacao: avalM, pagamentos: pagM, ginasio: ginasioM } };
 
 db.auth.getSession().then(({ data }) => data.session ? boot() : loginView());
 </script>
