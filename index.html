@@ -225,6 +225,8 @@ a.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;text
 .cq .ci{display:grid;place-items:center;width:44px;height:44px;border-radius:50%;background:var(--line);font-size:24px}
 .cq.on{opacity:1;border-color:var(--ac)}
 .cq.on .ci{background:var(--ac);color:var(--acx)}
+.cd2{font-size:22px;letter-spacing:.14em}
+.acesso{border-color:var(--ac)}
 </style>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.49.0/dist/tabler-icons.min.css">
 </head>
@@ -280,23 +282,28 @@ window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); DEF = 
 window.addEventListener('appinstalled', () => { DEF = null; renderInstalar(); });
 if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
 
-function loginView(msg = '') {
+function loginView(msg = '', prefill = '') {
   document.body.classList.remove('has-nav');
   document.body.classList.add('is-login');
   app.innerHTML = `<div class="lg-wrap"><div class="lg-brand"><img src="${LOGO_BIG}" alt="Ginásio Top Fitness"><p>Treinos, mensalidades e evolução num só lugar.</p></div>
     <div class="card lg-form"><h1>Entrar</h1>
-    <p class="mu">Membros entram com o telefone. A equipa pode usar o email.</p>
-    <label>Telefone ou email<input id="id" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false"></label>
-    <label>Palavra-passe<input id="pw" type="password" autocomplete="current-password" autocapitalize="off" autocorrect="off"></label>
+    <p class="mu">Alunos: telefone e código de entrada (6 dígitos, dado pela receção). Equipa: email e palavra-passe.</p>
+    <label>Telefone ou email<input id="id" value="${esc(prefill)}" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false"></label>
+    <label><span id="pwl">Palavra-passe</span><input id="pw" type="password" autocomplete="current-password" autocapitalize="off" autocorrect="off"></label>
     <p class="err" role="alert">${esc(msg)}</p>
     <button class="btn" id="go">Entrar</button><div class="inst-slot"></div></div></div>`;
   renderInstalar();
+  const modo = () => { const v = $id('id').value.trim(), tel = !!v && !v.includes('@') && /^[\d\s+()-]+$/.test(v);
+    $id('pwl').textContent = tel ? 'Código de entrada (6 dígitos)' : 'Palavra-passe'; $id('pw').inputMode = tel ? 'numeric' : 'text'; };
+  $id('id').oninput = modo; modo();
   $id('go').onclick = async () => {
     const v = $id('id').value.trim();
-    if (!v.includes('@') && /[^\d\s+()-]/.test(v)) return loginView('Escreve só o número de telefone (ex.: 990000011) ou o email, não o nome.');
+    if (!v.includes('@') && /[^\d\s+()-]/.test(v)) return loginView('Escreve só o número de telefone (ex.: 990000011) ou o email, não o nome.', v);
     const email = v.includes('@') ? v.toLowerCase() : norm(v) + '@membros.gym';
     const { error } = await db.auth.signInWithPassword({ email, password: $id('pw').value });
-    error ? loginView('Não foi possível entrar (' + email + '): ' + error.message) : boot();
+    error ? loginView(/invalid login/i.test(error.message)
+      ? (v.includes('@') ? 'Email ou palavra-passe incorretos.' : 'Telefone ou código de entrada incorretos. Se perdeste o código, pede um novo à receção.')
+      : 'Não foi possível entrar: ' + error.message, v) : boot();
   };
 }
 
@@ -434,14 +441,27 @@ async function planos(el) {
   };
 }
 
+// Código de entrada: 6 dígitos aleatórios seguros (sem enviesar), é a palavra-passe do aluno
+const codigo6 = () => { const a = new Uint32Array(1); do crypto.getRandomValues(a); while (a[0] >= 4294000000); return String(a[0] % 1000000).padStart(6, '0'); };
+const acessoCard = a => { if (!a) return ''; const app = location.origin + location.pathname;
+  const w = waLink(a.phone, `Bem-vindo(a) ao ${S.gym}! Para entrares no app usa o telefone ${a.phone} e o código de entrada ${a.entrada}. Guarda-o e, no primeiro acesso, muda-o em Início > A minha conta.${a.porta ? ' O teu n.º da porta é ' + a.porta + '.' : ''} App: ${app}`);
+  return `<div class="card acesso" role="status"><h3 style="margin:0 0 4px">${a.novo ? 'Novo código de entrada' : 'Membro criado'}: ${esc(a.name)}</h3>
+    <p class="mu" style="margin:0 0 10px">Mostra este código ao aluno agora. Não volta a aparecer.</p>
+    <div class="rg"><span class="mu">Telefone</span><strong>${esc(a.phone)}</strong></div>
+    <div class="rg"><span class="mu">Código de entrada</span><strong class="cd2">${esc(a.entrada)}</strong></div>
+    ${a.porta ? `<div class="rg"><span class="mu">N.º da porta</span><strong>${esc(a.porta)}</strong></div>` : ''}
+    ${w ? `<a class="btn" style="margin-top:10px" href="${esc(w)}" target="_blank" rel="noopener"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i>Enviar ao aluno por WhatsApp</a>` : ''}</div>`; };
+
 // Cria a conta de login com um cliente temporário (não troca a sessão do staff) e depois a ficha via RPC
 async function criarMembro(d) {
   const tmp = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
   const phone = norm(d.phone);
-  const { data, error } = await tmp.auth.signUp({ email: phone + '@membros.gym', password: d.pw });
+  const entrada = codigo6();
+  const { data, error } = await tmp.auth.signUp({ email: phone + '@membros.gym', password: entrada });
   if (error) throw new Error(/already/i.test(error.message) ? 'Já existe um membro com este telefone.' : error.message);
   const r = await db.rpc('register_member', { p_user: data.user.id, p_name: d.name.trim(), p_phone: phone, p_pt: d.pt || null });
   if (r.error) throw r.error;
+  return { name: d.name.trim(), phone, entrada, porta: r.data && r.data.code };
 }
 
 async function membros(el) {
@@ -450,15 +470,14 @@ async function membros(el) {
     db.from('member_status').select('*').order('full_name'),
     db.from('user_roles').select('user_id, profiles(full_name)').eq('role', 'pt')]);
   if (m.error) return el.innerHTML = fail(m.error);
-  const flash = S.flash ? `<p class="ok" role="status">${esc(S.flash)}</p>` : ''; S.flash = '';
+  const flash = acessoCard(S.acesso) + (S.flash ? `<p class="ok" role="status">${esc(S.flash)}</p>` : ''); S.flash = ''; S.acesso = null;
   el.innerHTML = `${flash}<div class="row"><select id="fl" aria-label="Filtro"><option value="all">Todos</option><option value="active">Ativos</option>
       <option value="expired">Expirados</option><option value="suspended">Suspensos</option></select>
       <button class="btn ghost" id="nm">Novo membro</button></div>
-    <input id="q" placeholder="Nome, telefone ou código" aria-label="Pesquisar"><div id="ml"></div>
+    <input id="q" placeholder="Nome, telefone ou n.º da porta" aria-label="Pesquisar"><div id="ml"></div>
     <form id="mf" class="card" hidden><h3>Novo membro</h3>
       <label>Nome<input name="name" required></label>
       <label>Telefone<input name="phone" inputmode="tel" required></label>
-      <label>Palavra-passe inicial<input name="pw" minlength="6" required></label>
       <label>Personal Trainer<select name="pt"><option value="">Sem PT</option>
         ${(p.data || []).map(x => `<option value="${x.user_id}">${esc(x.profiles?.full_name)}</option>`).join('')}</select></label>
       <p class="err" id="me"></p><button class="btn">Criar membro</button></form>`;
@@ -467,7 +486,7 @@ async function membros(el) {
     const rows = m.data.filter(x => (f === 'all' || (f === 'active' ? ['active', 'expiring'].includes(x.status) : x.status === f))
       && `${x.full_name} ${x.phone} ${x.code}`.toLowerCase().includes(q));
     $id('ml').innerHTML = rows.length ? rows.map(x => `<div class="card row open" data-f="${x.member_id}"><div><strong>${esc(x.full_name)}</strong><br>
-      <span class="mu">${esc(x.phone || '')} · ${esc(x.plan_name || 'Sem plano')} · expira ${dm(x.end_date)} · código ${esc(x.code)}</span></div>
+      <span class="mu">${esc(x.phone || '')} · ${esc(x.plan_name || 'Sem plano')} · expira ${dm(x.end_date)} · porta ${esc(x.code)}</span></div>
       <div style="display:grid;gap:6px;justify-items:end"><span class="tag ${x.status}">${STATE[x.status]}</span><button class="btn ghost" data-r="${x.member_id}">Renovar</button></div></div>`).join('') : '<p class="mu">Nenhum membro encontrado.</p>';
   };
   $id('fl').onchange = $id('q').oninput = draw;
@@ -477,7 +496,7 @@ async function membros(el) {
   $id('mf').onsubmit = async e => {
     e.preventDefault(); const d = Object.fromEntries(new FormData(e.target)), btn = e.submitter;
     btn.disabled = true; $id('me').textContent = '';
-    try { await criarMembro(d); S.flash = `Membro criado. Entra com o telefone ${norm(d.phone)} e a palavra-passe inicial.`; membros(el); }
+    try { S.acesso = await criarMembro(d); membros(el); }
     catch (err) { $id('me').textContent = err.message; btn.disabled = false; }
   };
   draw();
@@ -624,12 +643,16 @@ async function ficha(el) {
     db.from('body_logs').select('logged_on, weight_kg, waist_cm, mood').eq('member_id', id).order('logged_on', { ascending: false }).order('created_at', { ascending: false }).limit(60)]);
   const e = [m, g, as, lg, pl].find(x => x.error); if (e) return el.innerHTML = fail(e.error);
   const s = m.data, p = pl.data[0], has = r => S.roles.includes(r);
-  const staff = has('owner') || has('admin') || has('receptionist'), canAv = has('owner') || has('admin') || has('pt');
+  const mgr = has('owner') || has('admin'), staff = has('owner') || has('admin') || has('receptionist'), canAv = has('owner') || has('admin') || has('pt');
   const F = (n, l) => `<label>${l}<input name="${n}" type="number" step="0.1" min="0"></label>`;
   el.innerHTML = `<button class="btn ghost no-print" id="fb">← Voltar</button>
     <div class="row" style="margin:16px 0"><div class="av">${esc(s.full_name[0])}</div>
-      <div style="flex:1"><h2 style="margin:0">${esc(s.full_name)}</h2><span class="mu">${esc(s.phone || '')} · código ${esc(s.code)}</span></div>
+      <div style="flex:1"><h2 style="margin:0">${esc(s.full_name)}</h2><span class="mu">${esc(s.phone || '')} · porta ${esc(s.code)}</span></div>
       <span class="tag ${s.status}">${STATE[s.status]}</span></div>
+    ${acessoCard(S.acesso)}${S.msgF ? `<p class="ok" role="status">${esc(S.msgF)}</p>` : ''}
+    ${mgr ? `<div class="acts" style="margin-bottom:12px"><button class="btn ghost" id="fn" type="button">Novo código de entrada</button><button class="btn ghost" id="ft" type="button">Mudar telefone</button></div>
+    <form id="tf" class="card" hidden><label>Novo telefone do aluno<input name="tel" inputmode="tel" required></label><p class="mu">O aluno mantém o histórico e entra com o telefone novo e o mesmo código.</p><button class="btn">Guardar telefone</button></form>
+    <p class="err" id="fne" role="alert"></p>` : ''}
     <div class="grid g2">
       <div class="card"><span class="mu">Mensalidade</span><div><strong>${esc(s.plan_name || 'Sem plano')}</strong> · expira ${dm(s.end_date)}</div></div>
       <div class="card"><span class="mu">Treinos concluídos este mês</span><div class="big">${lg.count ?? 0}</div></div>
@@ -641,7 +664,21 @@ async function ficha(el) {
       <p class="err" id="ae"></p><button class="btn">Guardar avaliação</button></form>
     ${bl.error ? '' : corpoStaff(bl.data || [], s.pt_id === S.uid)}
     <h3>Avaliação física</h3>${resumoAval(as.data)}`;
+  S.acesso = null; S.msgF = '';
   $id('fb').onclick = () => { S.ficha = null; shell(); };
+  if ($id('fn')) $id('fn').onclick = async () => {
+    if (!confirm(`Gerar um código novo para ${s.full_name}? O código antigo deixa de funcionar.`)) return;
+    const r = await db.rpc('reset_member_access', { p_member: id });
+    if (r.error || !r.data) return $id('fne').textContent = 'Não foi possível gerar o código: ' + (r.error ? r.error.message : 'sem resposta');
+    S.acesso = { name: s.full_name, phone: s.phone, entrada: r.data, novo: true }; ficha(el);
+  };
+  if ($id('ft')) $id('ft').onclick = () => { $id('tf').hidden = !$id('tf').hidden; };
+  if ($id('tf')) $id('tf').onsubmit = async ev => {
+    ev.preventDefault(); ev.submitter.disabled = true; $id('fne').textContent = '';
+    const r = await db.rpc('change_member_phone', { p_member: id, p_phone: ev.target.tel.value });
+    if (r.error) { $id('fne').textContent = r.error.message; ev.submitter.disabled = false; return; }
+    S.msgF = 'Telefone atualizado para ' + r.data + '. O aluno entra com o telefone novo.'; ficha(el);
+  };
   if ($id('fp')) $id('fp').onclick = () => { S.mode = 'pt'; S.sec.pt = 'treinos'; S.novo = true; B = { mid: id, name: '', days: [{ label: 'A', items: [] }], cur: 0, grp: 'Todos' }; S.ficha = null; shell(); };
   if ($id('fa')) $id('fa').onclick = () => { $id('af').hidden = !$id('af').hidden; };
   if ($id('gs')) $id('gs').onclick = async () => {
@@ -962,9 +999,25 @@ async function membro(el) {
 
   const cartao = `<div class="mcard"><img src="${LOGO_BIG}" alt=""><div style="min-width:0"><span class="hl">Cartão de membro</span>
     <div style="font-weight:700;font-size:18px;overflow-wrap:anywhere">${esc(m.full_name || S.name)}</div>
-    <span class="hl" style="margin-top:8px">Código de acesso</span><div class="cd">${esc(m.code)}</div></div></div>`;
+    <span class="hl" style="margin-top:8px">N.º da porta</span><div class="cd">${esc(m.code)}</div></div></div>`;
 
-  el.innerHTML = `${flash}${hero}${avisos}${sem}${pesar}<div class="grid g2">${ev}${mens}</div>${cartao}`;
+  const soAluno = !S.roles.some(r => ['owner', 'admin', 'receptionist', 'pt'].includes(r));
+  const conta = !soAluno ? '' : `<div class="card"><span class="mu">A minha conta</span><p style="margin:6px 0 10px">Muda o código de entrada para um que só tu saibas.</p>
+    <form id="cf2" hidden><label>Novo código (6 dígitos)<input name="n1" type="password" inputmode="numeric" maxlength="6" autocomplete="new-password" required></label>
+      <label>Repete o código<input name="n2" type="password" inputmode="numeric" maxlength="6" autocomplete="new-password" required></label>
+      <button class="btn">Guardar código</button></form><p class="err" id="ce2" role="alert"></p><button class="btn ghost" id="mc" type="button">Mudar código de entrada</button></div>`;
+  el.innerHTML = `${flash}${hero}${avisos}${sem}${pesar}<div class="grid g2">${ev}${mens}</div>${cartao}${conta}`;
+  if ($id('mc')) $id('mc').onclick = () => { $id('cf2').hidden = !$id('cf2').hidden; };
+  if ($id('cf2')) $id('cf2').onsubmit = async ev => {
+    ev.preventDefault(); const n = ev.target.n1.value, err = t => { const e = $id('ce2'); e.className = 'err'; e.textContent = t; };
+    if (!/^\d{6}$/.test(n)) return err('O código tem de ter 6 dígitos.');
+    if (n !== ev.target.n2.value) return err('Os dois códigos não são iguais.');
+    if (/^(\d)\1+$/.test(n) || '0123456789'.includes(n) || '9876543210'.includes(n)) return err('Esse código é fácil de adivinhar. Escolhe outro.');
+    ev.submitter.disabled = true;
+    const { error } = await db.auth.updateUser({ password: n });
+    if (error) { ev.submitter.disabled = false; return err(/different/i.test(error.message) ? 'O código novo tem de ser diferente do atual.' : 'Não foi possível mudar: ' + error.message); }
+    ev.target.reset(); ev.target.hidden = true; const e = $id('ce2'); e.className = 'ok'; e.textContent = 'Código alterado. Usa o novo código da próxima vez que entrares.';
+  };
   if ($id('vt')) $id('vt').onclick = () => ir('treino');
   if ($id('va')) $id('va').onclick = () => ir('avaliacao');
   if ($id('pz')) $id('pz').onclick = () => ir('avaliacao');
@@ -1065,7 +1118,7 @@ async function pagM(el) {
   if (e2) return el.innerHTML = fail(e2);
   const preco = pr.error || !pr.data || pr.data.preco == null ? null : +pr.data.preco;
   const info = S.info || {}, pg = info.pagamento || {};
-  const wz = waLink(info.whatsapp, `Olá! Segue o comprovativo do pagamento da mensalidade. Nome: ${m.full_name || S.name}. Código: ${m.code}.`);
+  const wz = waLink(info.whatsapp, `Olá! Segue o comprovativo do pagamento da mensalidade. Nome: ${m.full_name || S.name}. N.º de membro: ${m.code}.`);
   const como = pg.iban || pg.instrucoes
     ? `<div class="card"><span class="mu">Como pagar${info.exemplo ? ' · dados de exemplo' : ''}</span>
       ${pg.instrucoes ? `<p style="margin:6px 0 10px">${esc(pg.instrucoes)}</p>` : ''}
