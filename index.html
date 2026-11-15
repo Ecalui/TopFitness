@@ -589,21 +589,21 @@ async function novoPlano(el) {
 
 function bld(el, { alunos, exs }) {
   const d = B.days[B.cur], rows = exs.filter(e => B.grp === 'Todos' || e.muscle_group === B.grp);
-  el.innerHTML = `<form class="card" id="bf"><h3>Novo plano de treino</h3>
-      <label>Aluno<select id="ba"><option value="">Escolher…</option>${alunos.map(m => `<option value="${m.member_id}"${m.member_id === B.mid ? ' selected' : ''}>${esc(m.full_name)}</option>`).join('')}</select></label>
+  el.innerHTML = `<form class="card" id="bf"><h3>${B.self ? 'O meu plano' : 'Novo plano de treino'}</h3>
+      ${B.self ? '' : `<label>Aluno<select id="ba"><option value="">Escolher…</option>${alunos.map(m => `<option value="${m.member_id}"${m.member_id === B.mid ? ' selected' : ''}>${esc(m.full_name)}</option>`).join('')}</select></label>`}
       <label>Nome do plano<input id="bn" value="${esc(B.name)}" placeholder="Ex.: Hipertrofia ABC"></label>
       <nav class="modes">${B.days.map((y, i) => `<button type="button" data-d="${i}" aria-pressed="${i === B.cur}">Treino ${y.label}</button>`).join('')}<button type="button" id="bad">+ Treino</button></nav>
       ${d.items.length ? d.items.map((it, i) => `<div class="card row"><div><strong>${esc(it.ex.name)}</strong><br><span class="mu">${esc(it.ex.muscle_group)}</span></div>
         <div class="sr"><input data-s="${i}" type="number" min="1" value="${it.sets}" aria-label="Séries"> × <input data-r="${i}" type="number" min="1" value="${it.reps}" aria-label="Repetições">
         <button type="button" class="btn ghost" data-x="${i}" aria-label="Remover">×</button></div></div>`).join('') : '<p class="mu">Sem exercícios neste treino. Adiciona da biblioteca abaixo.</p>'}
-      <p class="err" id="be"></p><button class="btn">Guardar e atribuir</button>
+      <p class="err" id="be"></p><button class="btn">${B.self ? 'Guardar o meu plano' : 'Guardar e atribuir'}</button>
       <button type="button" class="btn ghost" id="bc" style="margin-top:8px">Cancelar</button></form>
     <h3>Biblioteca</h3><nav class="modes">${['Todos', ...GRUPOS].map(g => `<button data-g="${g}" aria-pressed="${g === B.grp}">${g}</button>`).join('')}</nav>
     <div class="list">${rows.map(e => `<div class="card row"><div><strong>${esc(e.name)}</strong><br><span class="mu">${esc(e.muscle_group)}</span></div>
       <button class="btn" data-a="${e.id}" aria-label="Adicionar ${esc(e.name)}">+</button></div>`).join('') || '<p class="mu">Biblioteca vazia. Cria exercícios no separador Exercícios.</p>'}</div>`;
   el.onclick = ev => {
     const t = ev.target.closest('button'); if (!t) return; const D = t.dataset;
-    if (t.id === 'bc') { S.novo = false; B = null; return treinos(el); }
+    if (t.id === 'bc') { const me = B.self; S.novo = false; B = null; return me ? treinoM(el) : treinos(el); }
     if (D.d != null) B.cur = +D.d;
     else if (t.id === 'bad') { B.days.push({ label: String.fromCharCode(65 + B.days.length), items: [] }); B.cur = B.days.length - 1; }
     else if (D.g) B.grp = D.g;
@@ -620,16 +620,17 @@ function bld(el, { alunos, exs }) {
   $id('bf').onsubmit = async ev => {
     ev.preventDefault(); const err = m => { $id('be').textContent = m; };
     const days = B.days.filter(y => y.items.length);
-    if (!B.mid) return err('Escolhe o aluno.');
+    if (!B.mid && !B.self) return err('Escolhe o aluno.');
     if (!B.name.trim()) return err('Dá um nome ao plano.');
     if (!days.length) return err('Adiciona pelo menos um exercício.');
     ev.submitter.disabled = true;
-    try { await guardarPlano(days); S.novo = false; B = null; treinos(el); }
+    try { const me = B.self; await guardarPlano(days); S.novo = false; B = null; if (me) { S.dia = null; treinoM(el); } else treinos(el); }
     catch (e) { err(e.message); ev.submitter.disabled = false; }
   };
 }
 
 async function guardarPlano(days) {
+  if (B.self) { ok(await db.rpc('save_my_plan', { p_name: B.name.trim(), p_days: days.map(y => ({ label: y.label, items: y.items.map(it => ({ exercise_id: it.ex.id, sets: it.sets, reps: it.reps })) })) })); return; }
   const pl = ok(await db.from('workout_plans').insert({ member_id: B.mid, pt_id: S.uid, name: B.name.trim() }).select().single());
   try {
     const ds = ok(await db.from('workout_days').insert(days.map((y, i) => ({ plan_id: pl.id, label: y.label, position: i }))).select());
@@ -668,15 +669,16 @@ function resumoAval(a) {
 
 async function ficha(el) {
   const id = S.ficha;
-  const [m, g, as, lg, pl, bl] = await Promise.all([
+  const [m, g, spq, as, lg, pl, bl] = await Promise.all([
     db.from('member_status').select('*').eq('member_id', id).single(),
     db.from('members').select('goal').eq('id', id).single(),
+    db.from('members').select('self_plan').eq('id', id).maybeSingle(),
     db.from('assessments').select('*').eq('member_id', id).order('assessed_at', { ascending: false }).limit(12),
     db.from('workout_logs').select('id', { count: 'exact', head: true }).eq('member_id', id).gte('done_at', ym(new Date()) + '-01T00:00:00+01:00'),
     db.from('workout_plans').select('name, workout_days(label, position)').eq('member_id', id).eq('active', true).limit(1),
     db.from('body_logs').select('logged_on, weight_kg, waist_cm, mood').eq('member_id', id).order('logged_on', { ascending: false }).order('created_at', { ascending: false }).limit(60)]);
   const e = [m, g, as, lg, pl].find(x => x.error); if (e) return el.innerHTML = fail(e.error);
-  const s = m.data, p = pl.data[0], has = r => S.roles.includes(r);
+  const s = m.data, p = pl.data[0], has = r => S.roles.includes(r), SP = spq.data?.self_plan === true;
   const mgr = has('owner') || has('admin'), staff = has('owner') || has('admin') || has('receptionist'), canAv = has('owner') || has('admin') || has('pt');
   const F = (n, l) => `<label>${l}<input name="${n}" type="number" step="0.1" min="0"></label>`;
   el.innerHTML = `<button class="btn ghost no-print" id="fb">← Voltar</button>
@@ -691,6 +693,7 @@ async function ficha(el) {
       <div class="card"><span class="mu">Mensalidade</span><div><strong>${esc(s.plan_name || 'Sem plano')}</strong> · expira ${dm(s.end_date)}</div></div>
       <div class="card"><span class="mu">Treinos concluídos este mês</span><div class="big">${lg.count ?? 0}</div></div>
       <div class="card"><span class="mu">Plano de treino atual</span><div>${p ? `<strong>${esc(p.name)}</strong> · Treinos ${p.workout_days.sort(pos).map(d => d.label).join(', ')}` : 'Sem plano atribuído'}</div></div>
+      ${has('owner') || has('admin') || has('pt') ? `<div class="card"><span class="mu">Plano próprio</span><div>${SP ? '<strong>Autónomo</strong> · pode montar o seu plano' : 'Segue o plano do PT'}</div><button class="btn ghost" id="sp" type="button" style="margin-top:8px">${SP ? 'Retirar autonomia' : 'Dar autonomia'}</button></div>` : ''}
       <div class="card"><span class="mu">Objetivo</span>${staff ? `<input id="go" value="${esc(g.data.goal || '')}" placeholder="Ex.: ganho de massa" aria-label="Objetivo"><button class="btn ghost" id="gs">Guardar objetivo</button>`
         : `<div>${esc(g.data.goal || '—')}</div>`}</div></div>
     <div class="acts">${S.modes.includes('pt') ? '<button class="btn" id="fp">Atribuir plano de treino</button>' : ''}${canAv ? '<button class="btn ghost" id="fa">Nova avaliação física</button>' : ''}</div>
@@ -715,6 +718,7 @@ async function ficha(el) {
   };
   if ($id('fp')) $id('fp').onclick = () => { S.mode = 'pt'; S.sec.pt = 'treinos'; S.novo = true; B = { mid: id, name: '', days: [{ label: 'A', items: [] }], cur: 0, grp: 'Todos' }; S.ficha = null; shell(); };
   if ($id('fa')) $id('fa').onclick = () => { $id('af').hidden = !$id('af').hidden; };
+  if ($id('sp')) $id('sp').onclick = async ev => { ev.currentTarget.disabled = true; const r = await db.rpc('set_self_plan', { p_member: id, p_on: !SP }); S.msgF = r.error ? 'Não foi possível: ' + r.error.message : (SP ? 'Autonomia retirada.' : 'Aluno autónomo: já pode montar o seu plano.'); ficha(el); };
   if ($id('gs')) $id('gs').onclick = async () => {
     const { error } = await db.from('members').update({ goal: $id('go').value.trim() || null }).eq('id', id);
     $id('gs').textContent = error ? error.message : 'Guardado';
@@ -1137,9 +1141,23 @@ function celebra({ label, sem, meta, mes }) {
   o.onkeydown = e => { if (e.key === 'Escape') o.remove(); };
 }
 
+async function meuPlano(el) {
+  const [m, x] = await Promise.all([db.from('member_status').select('member_id').eq('profile_id', S.uid).maybeSingle(), db.from('exercises').select('*').order('name')]);
+  if (m.error || x.error || !m.data) return el.innerHTML = fail(m.error || x.error || { message: 'Ainda não tens ficha de membro.' });
+  B = B || { self: true, mid: m.data.member_id, name: '', days: [{ label: 'A', items: [] }], cur: 0, grp: 'Todos' };
+  bld(el, { alunos: [], exs: x.data });
+}
+
 async function treinoM(el) {
+  if (S.novo) return meuPlano(el);
+  const sp = (await db.rpc('my_self_plan')).data === true;
+  const mp = () => { const b = $id('mp'); if (b) b.onclick = () => { S.novo = true; B = null; treinoM(el); }; };
   let D; try { D = await carregaMembro(); } catch (e) { return el.innerHTML = fail(e); }
-  if (!D || !D.plan || !D.days.length) return el.innerHTML = '<h2>O meu treino</h2>' + vazio('barbell', 'O teu plano está a ser preparado', 'Assim que o teu PT atribuir o teu plano de treino, ele aparece aqui, pronto a seguir exercício a exercício.');
+  if (!D || !D.plan || !D.days.length) {
+    el.innerHTML = '<h2>O meu treino</h2>' + (sp ? vazio('barbell', 'Monta o teu plano', 'Já tens experiência: cria o teu calendário de treino, treino a treino.') + '<button class="btn" id="mp">Criar o meu plano</button>'
+      : vazio('barbell', 'O teu plano está a ser preparado', 'Os alunos novos treinam com o plano do PT. Assim que ele o atribuir, aparece aqui, pronto a seguir exercício a exercício. Sem PT ainda? Fala com a receção.'));
+    return mp();
+  }
   if (!D.days.some(d => d.id === S.dia)) S.dia = D.hoje.id;
   const d = D.days.find(x => x.id === S.dia), key = chkKey(d.id), feitos = lerChk(key), n = d.workout_items.length;
   el.innerHTML = `<h2>O meu treino</h2><p class="mu">${esc(D.plan.name)}</p>
@@ -1150,7 +1168,8 @@ async function treinoM(el) {
       <div style="flex:1;min-width:0"><strong>${esc(i.exercises?.name)}</strong><br><span class="mu">${esc(i.exercises?.muscle_group)}</span>
       ${/^https?:\/\//.test(i.exercises?.video_url || '') ? ` · <a href="${esc(i.exercises.video_url)}" target="_blank" rel="noopener">vídeo</a>` : ''}</div>
       <strong>${i.sets} × ${i.reps}</strong></div>`).join('')}</div>
-    <p class="err" id="ce"></p><button class="btn" id="cc" style="width:100%">Concluir treino</button>`;
+    <p class="err" id="ce"></p><button class="btn" id="cc" style="width:100%">Concluir treino</button>${sp ? '<button class="btn ghost" id="mp" style="margin-top:10px;width:100%">Montar um plano novo</button>' : ''}`;
+  mp();
   const cards = [...el.querySelectorAll('.ex')];
   const pinta = () => {
     cards.forEach((c, k) => { c.classList.toggle('done', feitos.has(k)); c.setAttribute('aria-checked', feitos.has(k)); });
