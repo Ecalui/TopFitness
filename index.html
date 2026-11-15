@@ -240,7 +240,9 @@ a.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;text
 .ra{flex:none;min-width:max-content}
 .ra .btn{padding:10px 14px}
 /* a página não abana: sem deslize para os lados e sem "puxar para atualizar" por engano */
-html,body{overflow-x:hidden;overscroll-behavior-y:contain}
+html{overscroll-behavior-y:contain}
+body{overflow-x:hidden}
+@supports(overflow:clip){body{overflow-x:clip}}
 </style>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.49.0/dist/tabler-icons.min.css">
 </head>
