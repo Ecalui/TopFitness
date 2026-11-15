@@ -136,15 +136,16 @@ details ul{margin:8px 0;padding-left:20px}
 
 /* login com logo em destaque + boas-vindas + dark mais suave */
 [data-theme=dark]{--bg:#111f30;--card:#1a2d44;--line:#2c4766;--mu:#a6bbd0;--sb:#0e1c2e}
-body.is-login{min-height:100vh;background:radial-gradient(900px 520px at 5% 0%,rgba(31,111,194,.5),transparent 60%),radial-gradient(820px 520px at 100% 100%,rgba(255,138,42,.38),transparent 60%),#0a1626}
+body.is-login{min-height:100vh;min-height:100dvh;background:radial-gradient(900px 520px at 5% 0%,rgba(31,111,194,.5),transparent 60%),radial-gradient(820px 520px at 100% 100%,rgba(255,138,42,.38),transparent 60%),#0a1626}
 body.is-login main{max-width:1000px}
-.lg-wrap{min-height:calc(100vh - 48px);display:grid;gap:22px;align-content:center}
+.lg-wrap{min-height:calc(100vh - 48px);min-height:calc(100dvh - 48px);display:grid;gap:22px;align-content:center}
 .lg-brand{text-align:center}
 .lg-brand img{display:block;margin:0 auto;width:min(74vw,330px);aspect-ratio:1;border-radius:32px;box-shadow:0 24px 64px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.08)}
 .lg-brand p{color:#cfe0f2;margin:16px auto 0;max-width:30ch}
 .lg-form.card{margin:0;padding:22px 22px 24px}
 .lg-form h1{margin:0 0 6px}
 .lg-form .btn{width:100%}
+@media(max-height:960px) and (max-width:859px){.lg-wrap{gap:14px;min-height:0}.lg-brand img{width:min(58vw,27dvh,330px);border-radius:26px}.lg-brand p{display:none}.lg-form.card{padding:16px 18px 18px}}
 @media(min-width:860px){.lg-wrap{grid-template-columns:1fr 410px;gap:56px;align-items:center}.lg-brand img{width:min(100%,460px)}}
 .splash{position:fixed;inset:0;z-index:50;display:grid;place-content:center;justify-items:center;gap:16px;background:radial-gradient(700px 420px at 15% 10%,rgba(31,111,194,.5),transparent 60%),radial-gradient(700px 420px at 90% 95%,rgba(255,138,42,.4),transparent 60%),#0a1626;pointer-events:none;animation:spl 2.1s ease forwards}
 .splash img{width:min(58vw,280px);aspect-ratio:1;border-radius:30px;box-shadow:0 24px 64px rgba(0,0,0,.55);animation:pop .7s ease both}
@@ -236,6 +237,10 @@ a.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;text
 .hd>strong{display:flex;flex-direction:column;align-items:flex-end;gap:2px;font-size:15px;font-weight:600;white-space:nowrap}
 .hd.hoje{color:var(--ac)}
 .hd.hoje strong{font-weight:700}
+.ra{flex:none;min-width:max-content}
+.ra .btn{padding:10px 14px}
+/* a página não abana: sem deslize para os lados e sem "puxar para atualizar" por engano */
+html,body{overflow-x:hidden;overscroll-behavior-y:contain}
 </style>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.49.0/dist/tabler-icons.min.css">
 </head>
@@ -406,7 +411,7 @@ async function faturacao(el) {
     <h2>Pagamentos recentes</h2>
     <div class="list" id="pl">${pay.data.length ? pay.data.slice(0, 30).map(p => `<div class="card row"><div><strong>${rno(p)}</strong> · ${esc(nome(p))}<br>
       <span class="mu">${esc(p.plans?.name || '')} · ${METODO[p.method]} · ${dh(p.paid_at)}</span></div>
-      <div style="text-align:right"><strong>${kz(p.amount)}</strong><br><button class="btn ghost" data-v="${p.id}">Ver recibo</button></div></div>`).join('')
+      <div class="ra" style="text-align:right"><strong>${kz(p.amount)}</strong><br><button class="btn ghost" data-v="${p.id}">Ver recibo</button></div></div>`).join('')
       : '<p class="mu">Ainda não há pagamentos.</p>'}</div>`;
   const F = $id('pf2').elements;
   F.p.onchange = () => { F.a.value = F.p.selectedOptions[0]?.dataset.price || ''; };
@@ -496,7 +501,7 @@ async function membros(el) {
       && `${x.full_name} ${x.phone} ${x.code}`.toLowerCase().includes(q));
     $id('ml').innerHTML = rows.length ? rows.map(x => `<div class="card row open" data-f="${x.member_id}"><div><strong>${esc(x.full_name)}</strong><br>
       <span class="mu">${esc(x.phone || '')} · ${esc(x.plan_name || 'Sem plano')} · expira ${dm(x.end_date)} · porta ${esc(x.code)}</span></div>
-      <div style="display:grid;gap:6px;justify-items:end"><span class="tag ${x.status}">${STATE[x.status]}</span><button class="btn ghost" data-r="${x.member_id}">Renovar</button></div></div>`).join('') : '<p class="mu">Nenhum membro encontrado.</p>';
+      <div class="ra" style="display:grid;gap:6px;justify-items:end"><span class="tag ${x.status}">${STATE[x.status]}</span><button class="btn ghost" data-r="${x.member_id}">Renovar</button></div></div>`).join('') : '<p class="mu">Nenhum membro encontrado.</p>';
   };
   $id('fl').onchange = $id('q').oninput = draw;
   $id('ml').onclick = ev => { const b = ev.target.closest('[data-r]'); if (b) { S.prefill = b.dataset.r; S.sec.gestao = 'faturacao'; return shell(); } const c = ev.target.closest('[data-f]'); if (c) { S.ficha = c.dataset.f; shell(); } };
