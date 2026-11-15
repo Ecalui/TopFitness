@@ -227,6 +227,15 @@ a.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;text
 .cq.on .ci{background:var(--ac);color:var(--acx)}
 .cd2{font-size:22px;letter-spacing:.14em}
 .acesso{border-color:var(--ac)}
+.hd7{border-top:1px solid var(--line);padding:10px 0}
+.hp{display:flex;align-items:center;gap:8px;margin-top:6px}
+.hp .mu{flex:0 0 84px;font-size:13px}
+.hp input{margin:0;padding:10px 8px;min-width:0;flex:1}
+.hd{align-items:flex-start}
+.hd>span{white-space:nowrap}
+.hd>strong{display:flex;flex-direction:column;align-items:flex-end;gap:2px;font-size:15px;font-weight:600;white-space:nowrap}
+.hd.hoje{color:var(--ac)}
+.hd.hoje strong{font-weight:700}
 </style>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.49.0/dist/tabler-icons.min.css">
 </head>
@@ -806,6 +815,24 @@ async function emRisco(el) {
 const wa = n => { const d = String(n || '').replace(/\D/g, ''); return d.length === 9 ? '244' + d : d; };
 const link = u => /^https?:\/\//i.test(u || '') ? u : '';
 const waLink = (n, txt) => wa(n) ? `https://wa.me/${wa(n)}?text=${encodeURIComponent(txt || '')}` : '';
+// Horário semanal estruturado: info.semana = 7 posições (0 = domingo), cada uma com 0 a 2 períodos [início, fim]
+const DIAS = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
+const agoraLuanda = () => new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Luanda' }));
+const semanaOk = s => Array.isArray(s) && s.length === 7 && s.every(Array.isArray);
+function estadoGinasio(sem, n) {
+  const m = n.getHours() * 60 + n.getMinutes(), t = s => { const [a, b] = s.split(':'); return +a * 60 + +b; }, hoje = sem[n.getDay()] || [];
+  for (const [a, b] of hoje) if (m >= t(a) && m < t(b)) return { aberto: true, txt: `Fecha às ${b}` };
+  for (const [a] of hoje) if (m < t(a)) return { aberto: false, txt: `Abre hoje às ${a}` };
+  for (let k = 1; k <= 7; k++) { const d = (n.getDay() + k) % 7, ps = sem[d] || []; if (ps.length) return { aberto: false, txt: k === 1 ? `Abre amanhã às ${ps[0][0]}` : `Abre ${DIAS[d].toLowerCase()} às ${ps[0][0]}` }; }
+  return { aberto: false, txt: 'Sem horário definido' };
+}
+function horarioCard(sem, nota) {
+  const n = agoraLuanda(), hoje = n.getDay(), e = estadoGinasio(sem, n);
+  return `<div class="card"><div class="row" style="align-items:center"><h3 style="margin:0">Horário</h3><span class="tag ${e.aberto ? 'active' : 'expired'}">${e.aberto ? 'Aberto agora' : 'Fechado'}</span></div>
+    <p class="mu" style="margin:6px 0 10px">${e.txt}</p>
+    ${[1, 2, 3, 4, 5, 6, 0].map(d => `<div class="rg hd${d === hoje ? ' hoje' : ''}"><span>${DIAS[d]}${d === hoje ? ' · hoje' : ''}</span><strong>${sem[d].length ? sem[d].map(([a, b]) => `<span>${esc(a)} – ${esc(b)}</span>`).join('') : 'Fechado'}</strong></div>`).join('')}
+    ${nota ? `<p class="mu" style="margin:10px 0 0">${esc(nota)}</p>` : ''}</div>`;
+}
 const linhasHorario = t => String(t || '').split('\n').map(x => x.trim()).filter(Boolean).map(x => { const m = x.match(/^(.*?):\s+(.*)$/); return m ? [m[1], m[2]] : [x, '']; });
 
 async function ginasioM(el) {
@@ -817,7 +844,7 @@ async function ginasioM(el) {
   const bt = (href, ic, t, ghost) => `<a class="btn${ghost ? ' ghost' : ''}" href="${esc(href)}" target="_blank" rel="noopener"><i class="ti ti-${ic}" aria-hidden="true"></i>${t}</a>`;
   const contactos = i.morada || tel || w ? `<div class="card"><h3 style="margin:0 0 6px">${esc(S.gym)}</h3>${i.morada ? `<p style="margin:0 0 12px">${esc(i.morada)}</p>` : ''}
     <div class="acts">${mapa ? bt(mapa, 'map-pin', 'Abrir no mapa', true) : ''}${tel ? bt(tel, 'phone', 'Ligar', true) : ''}${w ? bt(w, 'brand-whatsapp', 'WhatsApp') : ''}</div></div>` : '';
-  const horario = hor.length ? `<div class="card"><h3 style="margin:0 0 6px">Horário</h3>${hor.map(([a, b]) => `<div class="rg"><span>${esc(a)}</span><strong>${esc(b)}</strong></div>`).join('')}</div>` : '';
+  const horario = semanaOk(i.semana) ? horarioCard(i.semana, i.horario_nota) : hor.length ? `<div class="card"><h3 style="margin:0 0 6px">Horário</h3>${hor.map(([a, b]) => `<div class="rg"><span>${esc(a)}</span><strong>${esc(b)}</strong></div>`).join('')}</div>` : '';
   const instr = inst === undefined ? '' : inst && inst.nome
     ? `<div class="card"><span class="mu">O teu instrutor</span><div class="big">${esc(inst.nome)}</div>${iw ? `<div class="acts" style="margin-top:10px">${bt(iw, 'brand-whatsapp', 'Falar com o instrutor')}</div>` : ''}</div>`
     : '<div class="card"><span class="mu">O teu instrutor</span><p style="margin:6px 0 0">Ainda não tens instrutor atribuído. Pergunta na receção.</p></div>';
@@ -847,18 +874,38 @@ async function config(el) {
     <form class="card" id="cf" novalidate>
       <div class="fg">${f('morada', 'Morada', i.morada)}${f('mapa_url', 'Link do mapa (opcional)', i.mapa_url, 'https://maps.google.com/...')}</div>
       <div class="fg">${f('telefone', 'Telefone', i.telefone, '+244 9...')}${f('whatsapp', 'WhatsApp', i.whatsapp, '9... ou 244...')}</div>
-      <label>Horário (uma linha por dia, ex.: Seg a Sex: 06:00 - 21:00)<textarea name="horario" rows="4">${esc(i.horario)}</textarea></label>
+      <h3>Horário</h3>
+      <p class="mu">Até dois períodos por dia (ex.: manhã e tarde), em 24 horas (ex.: 16:00). Deixa vazio o dia em que está fechado.</p>
+      ${[1, 2, 3, 4, 5, 6, 0].map(d => { const ps = semanaOk(i.semana) ? i.semana[d] : [], T = (k, j, v) => `<input class="hr" name="h${d}_${k}${j}" value="${esc(v || '')}" inputmode="numeric" maxlength="5" placeholder="--:--" autocomplete="off" aria-label="${DIAS[d]}, período ${k + 1}, ${j === 'a' ? 'início' : 'fim'}">`;
+        return `<div class="hd7"><strong>${DIAS[d]}</strong>${[0, 1].map(k => `<div class="hp"><span class="mu">${k + 1}.º período</span>${T(k, 'a', (ps[k] || [])[0])}<span>–</span>${T(k, 'b', (ps[k] || [])[1])}</div>`).join('')}</div>`; }).join('')}
+      <button class="btn ghost" type="button" id="cps">Copiar segunda-feira para terça a sábado</button>
+      <label style="margin-top:14px">Nota sobre o horário (opcional, ex.: feriados)<textarea name="horario_nota" rows="2">${esc(i.horario_nota)}</textarea></label>
       <h3>Como pagar</h3>
       <div class="fg">${f('banco', 'Banco', pg.banco)}${f('titular', 'Titular', pg.titular)}</div>
       ${f('iban', 'IBAN', pg.iban)}
       <label>Instruções para o aluno<textarea name="instrucoes" rows="3">${esc(pg.instrucoes)}</textarea></label>
       <p class="err" id="ce" role="alert"></p><button class="btn" style="width:100%">Guardar</button></form>`;
+  const hhmm = s => { const d = String(s).replace(/\D/g, '').slice(0, 4); if (!d) return ''; return d.length <= 2 ? d.padStart(2, '0') + ':00' : d.length === 3 ? '0' + d[0] + ':' + d.slice(1) : d.slice(0, 2) + ':' + d.slice(2); };
+  const hok = s => /^([01]\d|2[0-3]):[0-5]\d$/.test(s);
+  el.querySelectorAll('input.hr').forEach(x => { x.oninput = () => { const d = x.value.replace(/\D/g, '').slice(0, 4); x.value = d.length > 2 ? d.slice(0, 2) + ':' + d.slice(2) : d; }; x.onblur = () => { x.value = hhmm(x.value); }; });
+  $id('cps').onclick = () => { const f = $id('cf'); for (let d = 2; d <= 6; d++) for (const k of [0, 1]) for (const j of ['a', 'b']) f[`h${d}_${k}${j}`].value = f[`h1_${k}${j}`].value; };
   $id('cf').onsubmit = async ev => {
     ev.preventDefault();
     const v = n => ev.target[n].value.trim(), err = t => $id('ce').textContent = t;
+    const semana = [];
+    for (let d = 0; d < 7; d++) {
+      const ps = [];
+      for (const k of [0, 1]) { const a = hhmm(v(`h${d}_${k}a`)), b = hhmm(v(`h${d}_${k}b`)); if (!a && !b) continue;
+        if (!a || !b) return err(`${DIAS[d]}: preenche o início e o fim do período.`);
+        if (!hok(a) || !hok(b)) return err(`${DIAS[d]}: escreve as horas no formato 05:00 (24 horas).`);
+        if (b <= a) return err(`${DIAS[d]}: o fim tem de ser depois do início.`); ps.push([a, b]); }
+      ps.sort((x, y) => x[0].localeCompare(y[0]));
+      if (ps.length === 2 && ps[1][0] < ps[0][1]) return err(`${DIAS[d]}: os dois períodos não podem sobrepor-se.`);
+      semana.push(ps);
+    }
     if (v('mapa_url') && !link(v('mapa_url'))) return err('O link do mapa tem de começar por http:// ou https://');
     if (v('whatsapp') && wa(v('whatsapp')).length < 9) return err('O WhatsApp parece incompleto.');
-    const info = { ...i, exemplo: false, morada: v('morada'), mapa_url: v('mapa_url'), telefone: v('telefone'), whatsapp: v('whatsapp'), horario: v('horario'),
+    const info = { ...i, exemplo: false, morada: v('morada'), mapa_url: v('mapa_url'), telefone: v('telefone'), whatsapp: v('whatsapp'), horario: '', horario_nota: v('horario_nota'), semana,
       pagamento: { banco: v('banco'), titular: v('titular'), iban: v('iban'), instrucoes: v('instrucoes') } };
     ev.submitter.disabled = true;
     const { data, error } = await db.from('gyms').update({ info }).eq('id', g.id).select('id');
