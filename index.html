@@ -243,6 +243,23 @@ a.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;text
 html{overscroll-behavior-y:contain}
 body{overflow-x:hidden}
 @supports(overflow:clip){body{overflow-x:clip}}
+/* cabeçalho e modos compactos no telemóvel */
+.modes.seg .ls{display:none}
+@media(max-width:639px){
+.row.no-print{gap:8px;align-items:center;margin-bottom:4px}
+.who{gap:10px;flex:1 1 auto}
+.lg{width:40px;height:40px;border-radius:12px}
+.who h1{font-size:clamp(17px,5.2vw,22px);line-height:1.15}
+.who .mu{font-size:13px}
+.hr{gap:6px;flex:none}
+.hr .btn{width:44px;min-width:44px;height:44px;padding:0;display:grid;place-items:center;border-radius:14px}
+.hr .btn i{font-size:20px;margin:0}
+.hr .t{display:none}
+.modes.seg{gap:6px;overflow:visible;margin:12px 0 18px}
+.modes.seg button{flex:1 1 0;min-width:0;padding:10px 6px;font-size:14px;white-space:nowrap}
+.modes.seg .lf{display:none}
+.modes.seg .ls{display:inline}
+}
 </style>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.49.0/dist/tabler-icons.min.css">
 </head>
@@ -278,6 +295,7 @@ let NOMES = {};
 const nome = p => NOMES[p.member_id] || '—';
 const STATE = {active:'Ativo', expiring:'A expirar', expired:'Expirado', suspended:'Suspenso', none:'Sem plano'};
 const MODES = {gestao:'Gestão', pt:'Personal Trainer', membro:'Meu perfil'};
+const MODES_S = {gestao:'Gestão', pt:'PT', membro:'Perfil'};
 let S = {};
 
 const standalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
@@ -288,7 +306,7 @@ function renderInstalar() {
     const hdr = el.classList.contains('hdr');
     if (standalone()) return el.replaceChildren();
     if (DEF) {
-      el.innerHTML = `<button class="btn ghost" type="button"><i class="ti ti-download" aria-hidden="true"></i>${hdr ? 'Instalar' : 'Instalar app no telemóvel'}</button>`;
+      el.innerHTML = `<button class="btn ghost" type="button" aria-label="Instalar app"><i class="ti ti-download" aria-hidden="true"></i><span${hdr ? ' class="t"' : ''}>${hdr ? 'Instalar' : 'Instalar app no telemóvel'}</span></button>`;
       el.firstChild.onclick = async () => { DEF.prompt(); await DEF.userChoice.catch(() => {}); DEF = null; renderInstalar(); };
     } else if (isIOS && !hdr) el.innerHTML = '<p class="mu inst-ios">Para instalar: toca em Partilhar e depois em «Adicionar ao ecrã principal».</p>';
     else el.replaceChildren();
@@ -361,12 +379,12 @@ function shell() {
   S.sec = S.sec || {};
   const items = NAV[S.mode].filter(([k]) => !(k === 'ginasio' && S.info == null) && !(k === 'config' && (S.info == null || !(S.roles.includes('owner') || S.roles.includes('admin'))))), cur = S.sec[S.mode] || items[0][0];
   const sw = S.modes.length > 1
-    ? `<nav class="modes no-print" aria-label="Modo">${S.modes.map(m => `<button data-m="${m}" aria-pressed="${m === S.mode}">${MODES[m]}</button>`).join('')}</nav>` : '';
+    ? `<nav class="modes seg no-print" aria-label="Modo">${S.modes.map(m => `<button data-m="${m}" aria-pressed="${m === S.mode}"><span class="lf">${MODES[m]}</span><span class="ls" aria-hidden="true">${MODES_S[m]}</span></button>`).join('')}</nav>` : '';
   const nav = items.length > 1
     ? `<nav id="nav" aria-label="Secções"><img class="brand" src="${LOGO}" alt="">${items.map(([k, l, i]) => `<button data-s="${k}"${k === cur ? ' aria-current="page"' : ''}><i class="ti ti-${i}" aria-hidden="true"></i><span>${l}</span></button>`).join('')}</nav>` : '';
   document.body.classList.toggle('has-nav', !!nav);
   app.innerHTML = `<div class="row no-print"><div class="who"><img class="lg" src="${LOGO}" alt=""><div><span class="mu">${esc(S.gym)}</span><h1 style="margin:0">${saud()}, ${esc(S.name.split(' ')[0])}</h1></div></div>
-    <div class="hr"><span class="inst-slot hdr"></span><button class="btn ghost" id="th" aria-label="Alternar claro e escuro"><i class="ti ti-${T === 'dark' ? 'sun' : 'moon'}" aria-hidden="true"></i></button><button class="btn ghost" id="out">Sair</button></div></div>${sw}<section id="view" aria-live="polite"></section>${nav}`;
+    <div class="hr"><span class="inst-slot hdr"></span><button class="btn ghost" id="th" aria-label="Alternar claro e escuro"><i class="ti ti-${T === 'dark' ? 'sun' : 'moon'}" aria-hidden="true"></i></button><button class="btn ghost" id="out" aria-label="Sair"><i class="ti ti-logout" aria-hidden="true"></i><span class="t">Sair</span></button></div></div>${sw}<section id="view" aria-live="polite"></section>${nav}`;
   renderInstalar();
   $id('th').onclick = () => { T = T === 'dark' ? 'light' : 'dark'; tema(T); try { localStorage.setItem('theme', T); } catch {} shell(); };
   $id('out').onclick = async () => { S = {}; await db.auth.signOut(); loginView(); };
