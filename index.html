@@ -243,6 +243,14 @@ a.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;text
 html{overscroll-behavior-y:contain}
 body{overflow-x:hidden}
 @supports(overflow:clip){body{overflow-x:clip}}
+/* calendário semanal */
+.wk{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin:0 0 12px}
+.wk button{padding:9px 0;min-height:40px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:inherit;font:inherit;font-size:13px;cursor:pointer}
+.wk button[aria-pressed=true]{background:var(--ac);color:var(--acx);border-color:var(--ac);font-weight:700}
+.cal{display:flex;flex-direction:column;gap:2px;padding:6px;margin:12px 0}
+.cl{display:flex;gap:12px;align-items:center;text-align:left;background:none;border:0;border-radius:10px;padding:9px 10px;min-height:40px;color:inherit;font:inherit;font-size:14px;cursor:pointer}
+.cl b{width:34px;flex:none}.cl span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cl:disabled{opacity:.55;cursor:default}.cl.hj{background:var(--line)}.cl.hj b{color:var(--ac)}
 /* cabeçalho e modos compactos no telemóvel */
 .modes.seg .ls{display:none}
 @media(max-width:639px){
@@ -295,6 +303,7 @@ let NOMES = {};
 const nome = p => NOMES[p.member_id] || '—';
 const STATE = {active:'Ativo', expiring:'A expirar', expired:'Expirado', suspended:'Suspenso', none:'Sem plano'};
 const MODES = {gestao:'Gestão', pt:'Personal Trainer', membro:'Meu perfil'};
+const WD = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
 const MODES_S = {gestao:'Gestão', pt:'PT', membro:'Perfil'};
 let S = {};
 
@@ -592,7 +601,9 @@ function bld(el, { alunos, exs }) {
   el.innerHTML = `<form class="card" id="bf"><h3>${B.self ? 'O meu plano' : 'Novo plano de treino'}</h3>
       ${B.self ? '' : `<label>Aluno<select id="ba"><option value="">Escolher…</option>${alunos.map(m => `<option value="${m.member_id}"${m.member_id === B.mid ? ' selected' : ''}>${esc(m.full_name)}</option>`).join('')}</select></label>`}
       <label>Nome do plano<input id="bn" value="${esc(B.name)}" placeholder="Ex.: Hipertrofia ABC"></label>
-      <nav class="modes">${B.days.map((y, i) => `<button type="button" data-d="${i}" aria-pressed="${i === B.cur}">Treino ${y.label}</button>`).join('')}<button type="button" id="bad">+ Treino</button></nav>
+      <nav class="modes">${B.days.map((y, i) => `<button type="button" data-d="${i}" aria-pressed="${i === B.cur}">Treino ${y.label}${y.wd != null ? ' · ' + WD[y.wd] : ''}</button>`).join('')}<button type="button" id="bad">+ Treino</button></nav>
+      <p class="mu" style="margin:6px 0 4px">Dia da semana do Treino ${d.label} (opcional)</p>
+      <nav class="wk" aria-label="Dia da semana">${WD.map((n, k) => `<button type="button" data-w="${k}" aria-pressed="${d.wd === k}">${n}</button>`).join('')}</nav>
       ${d.items.length ? d.items.map((it, i) => `<div class="card row"><div><strong>${esc(it.ex.name)}</strong><br><span class="mu">${esc(it.ex.muscle_group)}</span></div>
         <div class="sr"><input data-s="${i}" type="number" min="1" value="${it.sets}" aria-label="Séries"> × <input data-r="${i}" type="number" min="1" value="${it.reps}" aria-label="Repetições">
         <button type="button" class="btn ghost" data-x="${i}" aria-label="Remover">×</button></div></div>`).join('') : '<p class="mu">Sem exercícios neste treino. Adiciona da biblioteca abaixo.</p>'}
@@ -606,6 +617,7 @@ function bld(el, { alunos, exs }) {
     if (t.id === 'bc') { const me = B.self; S.novo = false; B = null; return me ? treinoM(el) : treinos(el); }
     if (D.d != null) B.cur = +D.d;
     else if (t.id === 'bad') { B.days.push({ label: String.fromCharCode(65 + B.days.length), items: [] }); B.cur = B.days.length - 1; }
+    else if (D.w != null) d.wd = d.wd === +D.w ? null : +D.w;
     else if (D.g) B.grp = D.g;
     else if (D.a) d.items.push({ ex: exs.find(e => e.id === D.a), sets: 3, reps: 12 });
     else if (D.x != null) d.items.splice(+D.x, 1);
@@ -630,10 +642,10 @@ function bld(el, { alunos, exs }) {
 }
 
 async function guardarPlano(days) {
-  if (B.self) { ok(await db.rpc('save_my_plan', { p_name: B.name.trim(), p_days: days.map(y => ({ label: y.label, items: y.items.map(it => ({ exercise_id: it.ex.id, sets: it.sets, reps: it.reps })) })) })); return; }
+  if (B.self) { ok(await db.rpc('save_my_plan', { p_name: B.name.trim(), p_days: days.map(y => ({ label: y.label, weekday: y.wd ?? null, items: y.items.map(it => ({ exercise_id: it.ex.id, sets: it.sets, reps: it.reps })) })) })); return; }
   const pl = ok(await db.from('workout_plans').insert({ member_id: B.mid, pt_id: S.uid, name: B.name.trim() }).select().single());
   try {
-    const ds = ok(await db.from('workout_days').insert(days.map((y, i) => ({ plan_id: pl.id, label: y.label, position: i }))).select());
+    const ds = ok(await db.from('workout_days').insert(days.map((y, i) => ({ plan_id: pl.id, label: y.label, position: i, ...(y.wd != null ? { weekday: y.wd } : {}) }))).select());
     const items = days.flatMap((y, i) => y.items.map((it, j) => ({ day_id: ds.find(z => z.position === i).id, exercise_id: it.ex.id, sets: it.sets, reps: it.reps, position: j })));
     ok(await db.from('workout_items').insert(items));
   } catch (e) { await db.from('workout_plans').delete().eq('id', pl.id); throw e; }
@@ -990,6 +1002,7 @@ async function carregaMembro() {
   if (pl.error || lg.error) throw pl.error || lg.error;
   const plan = pl.data[0] || null, days = plan ? plan.workout_days.sort(pos) : [];
   days.forEach(d => d.workout_items.sort(pos));
+  if (days.length) { const wk = await db.from('workout_days').select('id, weekday').in('id', days.map(d => d.id)); if (!wk.error) days.forEach(d => { d.weekday = wk.data.find(z => z.id === d.id)?.weekday ?? null; }); }
   const logs = lg.data || [], last = logs[0], i = last ? days.findIndex(d => d.id === last.day_id) : -1;
   const hd = dia(new Date()), feito = !!last && dia(last.done_at) === hd && i >= 0;
   const sub = sb.data?.[0], dd = s => new Date(s + 'T00:00');
@@ -1006,6 +1019,8 @@ async function carregaMembro() {
     if (![0, 1, 2, 3, 4, 5, 6].some(k => treinados.has(addD(a, k)))) break;
     streak++;
   }
+  let hoje = days.length ? days[feito ? i : (i + 1) % days.length] : null;
+  if (!feito && days.some(d => d.weekday != null)) hoje = [0, 1, 2, 3, 4, 5, 6].map(k => days.find(d => d.weekday === (dow + k) % 7)).find(Boolean) || hoje;
   const aval = (av.data || []).map(x => ({ d: x.assessed_at, w: +x.weight_kg }));
   const corpo = bl.error ? null : (bl.data || []); // null = tabela ainda não existe: o app esconde a funcionalidade
   const pontos = [...aval, ...(corpo || []).filter(x => x.weight_kg != null).map(x => ({ d: x.logged_on, w: +x.weight_kg }))].sort((a, b) => a.d < b.d ? -1 : a.d > b.d ? 1 : 0);
@@ -1015,7 +1030,7 @@ async function carregaMembro() {
     mes: logs.filter(l => dia(l.done_at).startsWith(hd.slice(0, 7))).length,
     ultimo: last ? dia(last.done_at) : null,
     corpo, pontos, total: tt.count || 0, preco: pr.error || !pr.data || pr.data.preco == null ? null : +pr.data.preco, planoDesde: plan ? plan.created_at : null,
-    hoje: days.length ? days[feito ? i : (i + 1) % days.length] : null };
+    hoje };
 }
 
 async function membro(el) {
@@ -1161,7 +1176,8 @@ async function treinoM(el) {
   if (!D.days.some(d => d.id === S.dia)) S.dia = D.hoje.id;
   const d = D.days.find(x => x.id === S.dia), key = chkKey(d.id), feitos = lerChk(key), n = d.workout_items.length;
   el.innerHTML = `<h2>O meu treino</h2><p class="mu">${esc(D.plan.name)}</p>
-    <nav class="modes">${D.days.map(x => `<button data-d="${x.id}" aria-pressed="${x.id === S.dia}">Treino ${esc(x.label)}</button>`).join('')}</nav>
+    <nav class="modes">${D.days.map(x => `<button data-d="${x.id}" aria-pressed="${x.id === S.dia}">Treino ${esc(x.label)}${x.weekday != null ? ' · ' + WD[x.weekday] : ''}</button>`).join('')}</nav>
+    ${D.days.some(x => x.weekday != null) ? `<div class="card cal" aria-label="Calendário semanal">${WD.map((n, k) => { const ds = D.days.filter(x => x.weekday === k); return `<button type="button" class="cl${k === (ud(D.hd).getUTCDay() + 6) % 7 ? ' hj' : ''}"${ds.length ? ` data-c="${ds[0].id}"` : ' disabled'}><b>${n}</b><span>${ds.length ? ds.map(x => esc('Treino ' + x.label + ' · ' + (gruposDe(x) || '—'))).join(' + ') : 'Descanso'}</span></button>`; }).join('')}</div>` : ''}
     <div class="card"><div class="row"><strong id="pg"></strong><span class="mu">${esc(gruposDe(d))}</span></div><div class="bar" style="margin-top:10px"><i id="pb"></i></div></div>
     <div class="list">${d.workout_items.map((i, k) => `<div class="card ex" data-k="${k}" role="checkbox" aria-checked="false" tabindex="0">
       <span class="tick"><i class="ti ti-check" aria-hidden="true"></i></span>
@@ -1189,6 +1205,7 @@ async function treinoM(el) {
   lista.onclick = ev => { if (!ev.target.closest('a')) flip(ev.target.closest('.ex')); };
   lista.onkeydown = ev => { if (ev.key === ' ' || ev.key === 'Enter') { ev.preventDefault(); flip(ev.target.closest('.ex')); } };
   el.querySelector('.modes').onclick = ev => { const b = ev.target.closest('[data-d]'); if (b) { stopRest(); S.dia = b.dataset.d; treinoM(el); } };
+  const cl = el.querySelector('.cal'); if (cl) cl.onclick = ev => { const b = ev.target.closest('[data-c]'); if (b) { stopRest(); S.dia = b.dataset.c; treinoM(el); } };
   $id('cc').onclick = async ev => {
     const b = ev.currentTarget; b.disabled = true;
     const { error } = await db.from('workout_logs').insert({ member_id: D.m.member_id, day_id: d.id });
