@@ -573,14 +573,14 @@ async function exercicios(el) {
 async function treinos(el) {
   if (S.novo) return novoPlano(el);
   const { data, error } = await db.from('workout_plans')
-    .select('id, name, active, members(profiles!profile_id(full_name)), workout_days(label, position, workout_items(sets, reps, position, exercises(name)))')
+    .select('id, name, active, origin, members(profiles!profile_id(full_name)), workout_days(label, position, weekday, workout_items(sets, reps, position, exercises(name)))')
     .order('created_at', { ascending: false });
   if (error) return el.innerHTML = fail(error);
   const by = (a, b) => a.position - b.position;
   el.innerHTML = `<div class="row" style="margin-bottom:12px"><h2 style="margin:0">Planos de treino</h2><button class="btn" id="np">Novo plano</button></div>
-    <div class="list">${data.length ? data.map(p => `<details class="card"><summary><strong>${esc(p.name)}</strong> · ${esc(p.members?.profiles?.full_name || '—')}
+    <div class="list">${data.length ? data.map(p => `<details class="card"><summary><strong>${esc(p.name)}</strong> · ${esc(p.members?.profiles?.full_name || '—')}${p.origin === 'self' ? ' · plano próprio' : ''}
       <span class="tag ${p.active ? 'active' : 'none'}">${p.active ? 'Ativo' : 'Anterior'}</span></summary>
-      ${p.workout_days.sort(by).map(d => `<p><strong>Treino ${esc(d.label)}</strong></p><ul>${d.workout_items.sort(by).map(i =>
+      ${p.workout_days.sort(by).map(d => `<p><strong>Treino ${esc(d.label)}${d.weekday != null ? ' · ' + WD[d.weekday] : ''}</strong></p><ul>${d.workout_items.sort(by).map(i =>
         `<li>${esc(i.exercises?.name)} · ${i.sets} × ${i.reps}</li>`).join('')}</ul>`).join('')}</details>`).join('')
       : '<p class="mu">Ainda não há planos de treino.</p>'}</div>`;
   $id('np').onclick = () => { S.novo = true; B = null; treinos(el); };
@@ -649,7 +649,8 @@ async function guardarPlano(days) {
     const items = days.flatMap((y, i) => y.items.map((it, j) => ({ day_id: ds.find(z => z.position === i).id, exercise_id: it.ex.id, sets: it.sets, reps: it.reps, position: j })));
     ok(await db.from('workout_items').insert(items));
   } catch (e) { await db.from('workout_plans').delete().eq('id', pl.id); throw e; }
-  await db.from('workout_plans').update({ active: false }).eq('member_id', B.mid).neq('id', pl.id);
+  const r = await db.rpc('deactivate_other_plans', { p_member: B.mid, p_keep: pl.id });
+  if (r.error) await db.from('workout_plans').update({ active: false }).eq('member_id', B.mid).neq('id', pl.id);
 }
 
 const u1 = (v, s) => v == null ? '—' : String(v).replace('.', ',') + s;
