@@ -504,7 +504,7 @@ async function planos(el) {
 
 // Código de entrada: 6 dígitos aleatórios seguros (sem enviesar), é a palavra-passe do aluno
 const codigo6 = () => { const a = new Uint32Array(1); do crypto.getRandomValues(a); while (a[0] >= 4294000000); return String(a[0] % 1000000).padStart(6, '0'); };
-const msgAcesso = a => `Bem-vindo(a) ao ${S.gym}! Para entrares no app usa o telefone ${a.phone} e o código de entrada ${a.entrada}. Guarda-o e, no primeiro acesso, muda-o em Início > A minha conta.${a.porta ? ' O teu n.º da porta é ' + a.porta + '.' : ''} App: ${location.origin + location.pathname}`;
+const msgAcesso = a => `Bem-vindo(a) ao ${S.gym}! Para entrares no app usa o telefone ${a.phone} e o código de entrada ${a.entrada}. Ao entrares, o app pede-te para escolheres o teu código pessoal.${a.porta ? ' O teu n.º da porta é ' + a.porta + '.' : ''} App: ${location.origin + location.pathname}`;
 // O acesso abre numa janela à frente de tudo, para não passar despercebido (antes ficava no topo da lista)
 const acessoCard = a => { if (a) setTimeout(() => abreAcesso(a), 0); return ''; };
 function abreAcesso(a) {
@@ -517,12 +517,19 @@ function abreAcesso(a) {
     ${a.porta ? `<div class="rg"><span class="mu">N.º da porta</span><strong>${esc(a.porta)}</strong></div>` : ''}
     ${w ? `<a class="btn" href="${esc(w)}" target="_blank" rel="noopener"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i> Enviar por WhatsApp</a>` : ''}
     <button class="btn ghost" type="button" data-cp>Copiar mensagem</button>
-    <p class="mu" style="font-size:13px;margin:10px 0 0">O WhatsApp abre com a mensagem pronta, e tens de carregar em enviar. Este código só aparece agora: se o perderes, gera outro na ficha do aluno, em «Novo código de entrada».</p>
+    ${a.mid ? '<button class="btn ghost" type="button" data-rg>Gerar outro código</button>' : ''}
+    <p class="mu" style="font-size:13px;margin:10px 0 0">O WhatsApp abre com a mensagem pronta, e tens de carregar em enviar. Este código é temporário: quando o aluno entrar, o app pede-lhe para escolher o código dele. Só aparece agora; se o perderes, gera outro na ficha do aluno.</p>
     <button class="btn ghost" type="button" data-x>Fechar</button>`;
   document.body.append(d); d.showModal(); d.onclose = () => d.remove();
   d.onclick = async e => {
     const b = e.target.closest('button'); if (!b) return;
     if (b.hasAttribute('data-x')) d.close();
+    if (b.hasAttribute('data-rg')) {
+      if (!confirm('Gerar outro código? O que está aqui deixa de funcionar.')) return;
+      b.disabled = true; const r = await db.rpc('reset_member_access', { p_member: a.mid });
+      if (r.error || !r.data) { b.disabled = false; return alert('Não foi possível gerar: ' + (r.error ? r.error.message : 'sem resposta')); }
+      await db.rpc('flag_temp_code', { p_member: a.mid }); d.close(); return abreAcesso({ ...a, entrada: r.data, novo: true });
+    }
     if (b.hasAttribute('data-cp')) { try { await navigator.clipboard.writeText(msgAcesso(a)); b.textContent = 'Mensagem copiada'; } catch { prompt('Copia a mensagem:', msgAcesso(a)); } }
   };
 }
@@ -536,7 +543,7 @@ async function criarMembro(d) {
   if (error) throw new Error(/already/i.test(error.message) ? 'Já existe um membro com este telefone.' : error.message);
   const r = await db.rpc('register_member', { p_user: data.user.id, p_name: d.name.trim(), p_phone: phone, p_pt: d.pt || null });
   if (r.error) throw r.error;
-  return { name: d.name.trim(), phone, entrada, porta: r.data && r.data.code };
+  return { name: d.name.trim(), phone, entrada, porta: r.data && r.data.code, mid: r.data && r.data.id };
 }
 
 async function membros(el) {
@@ -850,7 +857,8 @@ async function ficha(el) {
     if (!confirm(`Gerar um código novo para ${s.full_name}? O código antigo deixa de funcionar.`)) return;
     const r = await db.rpc('reset_member_access', { p_member: id });
     if (r.error || !r.data) return $id('fne').textContent = 'Não foi possível gerar o código: ' + (r.error ? r.error.message : 'sem resposta');
-    S.acesso = { name: s.full_name, phone: s.phone, entrada: r.data, novo: true }; ficha(el);
+    await db.rpc('flag_temp_code', { p_member: id });
+    S.acesso = { name: s.full_name, phone: s.phone, entrada: r.data, novo: true, mid: id }; ficha(el);
   };
   if ($id('fd')) $id('fd').onclick = async () => {
     const t = prompt(`Para apagar ${s.full_name} de forma definitiva, escreve APAGAR:`);
@@ -1237,7 +1245,10 @@ async function membro(el) {
     <form id="cf2" hidden><label>Novo código (6 dígitos)<input name="n1" type="password" inputmode="numeric" maxlength="6" autocomplete="new-password" required></label>
       <label>Repete o código<input name="n2" type="password" inputmode="numeric" maxlength="6" autocomplete="new-password" required></label>
       <button class="btn">Guardar código</button></form><p class="err" id="ce2" role="alert"></p><button class="btn ghost" id="mc" type="button">Mudar código de entrada</button></div>`;
-  el.innerHTML = `${flash}${hero}${avisos}${sem}${pesar}<div class="grid g2">${ev}${mens}</div>${cartao}${conta}`;
+  const codeSet = (await db.auth.getSession()).data.session?.user?.user_metadata?.code_set === true;
+  const cod = soAluno && !codeSet ? `<button class="card row open" id="avc" type="button" style="width:100%;text-align:left;border:1px solid var(--ac);font:inherit;color:inherit;gap:12px;align-items:center"><i class="ti ti-key" aria-hidden="true" style="font-size:26px;color:var(--ac)"></i><span style="flex:1"><strong>Escolhe o teu código pessoal</strong><br><span class="mu">O código que recebeste é temporário. Troca-o por um só teu, em 20 segundos.</span></span><i class="ti ti-chevron-right" aria-hidden="true"></i></button>` : '';
+  el.innerHTML = `${flash}${hero}${cod}${avisos}${sem}${pesar}<div class="grid g2">${ev}${mens}</div>${cartao}${conta}`;
+  if ($id('avc')) $id('avc').onclick = () => { $id('cf2').hidden = false; $id('cf2').scrollIntoView({ behavior: reduz ? 'auto' : 'smooth', block: 'center' }); $id('cf2').n1.focus(); };
   if ($id('mc')) $id('mc').onclick = () => { $id('cf2').hidden = !$id('cf2').hidden; };
   if ($id('cf2')) $id('cf2').onsubmit = async ev => {
     ev.preventDefault(); const n = ev.target.n1.value, err = t => { const e = $id('ce2'); e.className = 'err'; e.textContent = t; };
@@ -1245,9 +1256,9 @@ async function membro(el) {
     if (n !== ev.target.n2.value) return err('Os dois códigos não são iguais.');
     if (/^(\d)\1+$/.test(n) || '0123456789'.includes(n) || '9876543210'.includes(n)) return err('Esse código é fácil de adivinhar. Escolhe outro.');
     ev.submitter.disabled = true;
-    const { error } = await db.auth.updateUser({ password: n });
+    const { error } = await db.auth.updateUser({ password: n, data: { code_set: true } });
     if (error) { ev.submitter.disabled = false; return err(/different/i.test(error.message) ? 'O código novo tem de ser diferente do atual.' : 'Não foi possível mudar: ' + error.message); }
-    ev.target.reset(); ev.target.hidden = true; const e = $id('ce2'); e.className = 'ok'; e.textContent = 'Código alterado. Usa o novo código da próxima vez que entrares.';
+    ev.target.reset(); ev.target.hidden = true; if ($id('avc')) $id('avc').remove(); const e = $id('ce2'); e.className = 'ok'; e.textContent = 'Código alterado. Usa o novo código da próxima vez que entrares.';
   };
   if ($id('vt')) $id('vt').onclick = () => ir('treino');
   if ($id('va')) $id('va').onclick = () => ir('avaliacao');
