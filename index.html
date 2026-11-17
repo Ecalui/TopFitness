@@ -243,6 +243,14 @@ a.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;text
 html{overscroll-behavior-y:contain}
 body{overflow-x:hidden}
 @supports(overflow:clip){body{overflow-x:clip}}
+/* demonstrações dos exercícios */
+.mth{flex:none;width:72px;height:72px;border-radius:14px;overflow:hidden;border:1px solid var(--line);padding:0;background:var(--line);cursor:pointer}
+.mth.s{width:48px;height:48px;border-radius:10px}
+.mth video,.mth img{width:100%;height:100%;object-fit:cover;display:block}
+dialog.mz{border:0;border-radius:18px;padding:12px;width:min(92vw,520px);background:var(--card);color:inherit}
+dialog.mz::backdrop{background:rgba(0,0,0,.6)}
+dialog.mz video,dialog.mz img{width:100%;max-height:70vh;border-radius:12px;display:block;object-fit:contain}
+dialog.mz .btn{width:100%;margin-top:10px}
 /* calendário semanal */
 .wk{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin:0 0 12px}
 .wk button{padding:9px 0;min-height:40px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:inherit;font:inherit;font-size:13px;cursor:pointer}
@@ -549,23 +557,118 @@ const GRUPOS = ['Peito', 'Costas', 'Pernas', 'Ombros', 'Braços', 'Abdómen', 'C
 const ok = r => { if (r.error) throw r.error; return r.data; };
 let B = null;
 
+const EQUIP = ['Barra', 'Halteres', 'Máquina', 'Cabo', 'Peso corporal', 'Outro'];
+const MIMES = { 'video/mp4': 'mp4', 'video/webm': 'webm', 'image/webp': 'webp', 'image/jpeg': 'jpg', 'image/png': 'png', 'image/gif': 'gif' };
+const SEED = `Peito|Barra|Supino reto com barra
+Peito|Halteres|Supino reto com halteres
+Peito|Halteres|Supino inclinado com halteres
+Peito|Máquina|Supino na máquina
+Peito|Halteres|Crucifixo com halteres
+Peito|Máquina|Voador (peck deck)
+Peito|Cabo|Cruzamento de cabos
+Peito|Peso corporal|Flexões
+Peito|Peso corporal|Mergulho nas paralelas
+Costas|Cabo|Puxada frontal
+Costas|Cabo|Remada sentada no cabo
+Costas|Barra|Remada curvada com barra
+Costas|Halteres|Remada unilateral com haltere
+Costas|Máquina|Remada na máquina
+Costas|Peso corporal|Barra fixa
+Costas|Cabo|Pulldown com braços estendidos
+Costas|Barra|Levantamento terra
+Costas|Peso corporal|Hiperextensão lombar
+Pernas|Barra|Agachamento livre
+Pernas|Máquina|Agachamento no Smith
+Pernas|Máquina|Leg press
+Pernas|Máquina|Cadeira extensora
+Pernas|Máquina|Mesa flexora
+Pernas|Halteres|Agachamento búlgaro
+Pernas|Halteres|Afundo com halteres
+Pernas|Barra|Stiff com barra
+Pernas|Barra|Elevação pélvica
+Pernas|Máquina|Cadeira abdutora
+Pernas|Máquina|Cadeira adutora
+Pernas|Máquina|Gémeos em pé
+Pernas|Máquina|Gémeos sentado
+Ombros|Halteres|Desenvolvimento com halteres
+Ombros|Máquina|Desenvolvimento na máquina
+Ombros|Halteres|Elevação lateral
+Ombros|Halteres|Elevação frontal
+Ombros|Halteres|Crucifixo inverso
+Ombros|Cabo|Face pull
+Ombros|Halteres|Encolhimento com halteres
+Braços|Barra|Rosca direta com barra
+Braços|Halteres|Rosca alternada com halteres
+Braços|Halteres|Rosca martelo
+Braços|Cabo|Rosca no cabo
+Braços|Máquina|Rosca Scott
+Braços|Cabo|Tríceps na polia
+Braços|Cabo|Tríceps com corda
+Braços|Barra|Tríceps testa com barra
+Braços|Halteres|Tríceps francês
+Braços|Peso corporal|Mergulho no banco
+Abdómen|Peso corporal|Abdominal crunch
+Abdómen|Peso corporal|Prancha
+Abdómen|Peso corporal|Elevação de pernas
+Abdómen|Cabo|Abdominal na polia
+Abdómen|Máquina|Abdominal na máquina
+Abdómen|Peso corporal|Torção russa
+Cardio|Máquina|Passadeira
+Cardio|Máquina|Bicicleta
+Cardio|Máquina|Elíptica
+Cardio|Máquina|Remo ergómetro
+Cardio|Outro|Corda de saltar`.split('\n').map(l => { const [muscle_group, equipment, name] = l.split('|'); return { name, muscle_group, equipment }; });
+const mediaOk = x => /^https:\/\//.test(x?.media_url || '');
+const mediaThumb = (x, sm) => mediaOk(x) ? `<button type="button" class="mth${sm ? ' s' : ''}" data-u="${esc(x.media_url)}" data-t="${esc(x.media_type || '')}" aria-label="Ampliar demonstração: ${esc(x.name)}">${(x.media_type || '').startsWith('video') ? `<video src="${esc(x.media_url)}" muted loop playsinline preload="none" disablepictureinpicture></video>` : `<img src="${esc(x.media_url)}" alt="" loading="lazy">`}</button>` : '';
+const reduz = matchMedia('(prefers-reduced-motion: reduce)').matches;
+function zoomMedia(u, t) {
+  const d = document.createElement('dialog'); d.className = 'mz';
+  d.innerHTML = (t.startsWith('video') ? `<video src="${esc(u)}" autoplay muted loop playsinline${reduz ? ' controls' : ''}></video>` : `<img src="${esc(u)}" alt="">`) + '<button class="btn" type="button">Fechar</button>';
+  document.body.append(d); d.showModal();
+  d.onclose = () => d.remove(); d.onclick = e => { if (e.target === d || e.target.tagName === 'BUTTON') d.close(); };
+}
+function ligaMedia(el) {
+  const vs = [...el.querySelectorAll('.mth video')];
+  if (reduz || !('IntersectionObserver' in window)) vs.forEach(v => { v.preload = 'metadata'; });
+  else { const io = new IntersectionObserver(es => es.forEach(e => { const v = e.target; if (e.isIntersecting) { v.preload = 'auto'; v.play().catch(() => {}); } else v.pause(); }), { threshold: .4 }); vs.forEach(v => io.observe(v)); }
+  el.querySelectorAll('.mth').forEach(b => { b.onclick = ev => { ev.stopPropagation(); zoomMedia(b.dataset.u, b.dataset.t); }; });
+}
+
 async function exercicios(el) {
   const { data, error } = await db.from('exercises').select('*').order('muscle_group').order('name');
   if (error) return el.innerHTML = fail(error);
-  const g = S.eg || 'Todos';
+  const g = S.eg || 'Todos', have = new Set(data.map(x => x.name.toLowerCase()));
+  const faltam = SEED.filter(x => !have.has(x.name.toLowerCase()));
   const rows = data.filter(x => g === 'Todos' || x.muscle_group === g);
   el.innerHTML = `<nav class="modes">${['Todos', ...GRUPOS].map(x => `<button data-g="${x}" aria-pressed="${x === g}">${x}</button>`).join('')}</nav>
-    <div class="list">${rows.length ? rows.map(x => `<div class="card row"><div><strong>${esc(x.name)}</strong><br><span class="mu">${esc(x.muscle_group)}</span></div>
-      ${/^https?:\/\//.test(x.video_url || '') ? `<a href="${esc(x.video_url)}" target="_blank" rel="noopener">Ver vídeo</a>` : ''}</div>`).join('') : '<p class="mu">Nenhum exercício neste grupo.</p>'}</div>
+    <p class="err" id="xm"></p>
+    <div class="list">${rows.length ? rows.map(x => `<div class="card row" style="gap:12px;align-items:center">${mediaThumb(x)}<div style="flex:1;min-width:0"><strong>${esc(x.name)}</strong><br><span class="mu">${esc(x.muscle_group)}${x.equipment ? ' · ' + esc(x.equipment) : ''}</span></div>
+      <label class="btn ghost up"><i class="ti ti-upload" aria-hidden="true"></i> ${mediaOk(x) ? 'Trocar' : 'Demonstração'}<input type="file" hidden accept="${Object.keys(MIMES)}" data-up="${x.id}"></label></div>`).join('') : '<p class="mu">Nenhum exercício neste grupo.</p>'}</div>
     <form id="xf" class="card"><h3>Novo exercício</h3>
       <label>Nome<input name="name" required></label>
       <label>Grupo muscular<select name="g">${GRUPOS.map(x => `<option>${x}</option>`).join('')}</select></label>
-      <label>Link do vídeo (opcional)<input name="v" type="url" placeholder="https://"></label>
-      <p class="err" id="xe"></p><button class="btn">Guardar exercício</button></form>`;
+      <label>Equipamento<select name="eq">${EQUIP.map(x => `<option>${x}</option>`).join('')}</select></label>
+      <label>Link de vídeo completo (opcional)<input name="v" type="url" placeholder="https://"></label>
+      <p class="err" id="xe"></p><button class="btn">Guardar exercício</button></form>
+    ${faltam.length ? `<button class="btn ghost" id="xs" type="button" style="width:100%;margin-top:10px">Carregar lista inicial (${faltam.length} exercícios)</button>` : ''}`;
   el.querySelector('.modes').onclick = ev => { const b = ev.target.closest('[data-g]'); if (b) { S.eg = b.dataset.g; exercicios(el); } };
+  ligaMedia(el);
+  if ($id('xs')) $id('xs').onclick = async () => { $id('xs').disabled = true; const r = await db.from('exercises').insert(faltam); if (r.error) { $id('xm').textContent = r.error.message; $id('xs').disabled = false; } else exercicios(el); };
+  el.onchange = async ev => {
+    const f = ev.target.files?.[0], id = ev.target.dataset?.up; if (!f || !id) return;
+    const ext = MIMES[f.type], msg = t => { $id('xm').textContent = t; ev.target.value = ''; };
+    if (!ext) return msg('Formato não aceite. Usa MP4, WebM, WebP, JPG, PNG ou GIF.');
+    if (f.size > 3 * 1024 * 1024) return msg('Ficheiro com mais de 3 MB. Usa um clip de 3 a 6 segundos, sem som.');
+    $id('xm').textContent = 'A enviar…';
+    const path = `${id}-${Date.now()}.${ext}`, up = await db.storage.from('exercicios').upload(path, f, { contentType: f.type, cacheControl: '31536000' });
+    if (up.error) return msg(up.error.message);
+    const url = db.storage.from('exercicios').getPublicUrl(path).data.publicUrl;
+    const r = await db.from('exercises').update({ media_url: url, media_type: f.type }).eq('id', id);
+    r.error ? msg(r.error.message) : exercicios(el);
+  };
   $id('xf').onsubmit = async ev => {
     ev.preventDefault(); const d = Object.fromEntries(new FormData(ev.target));
-    const { error } = await db.from('exercises').insert({ name: d.name.trim(), muscle_group: d.g, video_url: d.v || null });
+    const { error } = await db.from('exercises').insert({ name: d.name.trim(), muscle_group: d.g, equipment: d.eq, video_url: d.v || null });
     error ? $id('xe').textContent = error.message : exercicios(el);
   };
 }
@@ -610,8 +713,9 @@ function bld(el, { alunos, exs }) {
       <p class="err" id="be"></p><button class="btn">${B.self ? 'Guardar o meu plano' : 'Guardar e atribuir'}</button>
       <button type="button" class="btn ghost" id="bc" style="margin-top:8px">Cancelar</button></form>
     <h3>Biblioteca</h3><nav class="modes">${['Todos', ...GRUPOS].map(g => `<button data-g="${g}" aria-pressed="${g === B.grp}">${g}</button>`).join('')}</nav>
-    <div class="list">${rows.map(e => `<div class="card row"><div><strong>${esc(e.name)}</strong><br><span class="mu">${esc(e.muscle_group)}</span></div>
+    <div class="list">${rows.map(e => `<div class="card row" style="gap:10px;align-items:center">${mediaThumb(e, 1)}<div style="flex:1;min-width:0"><strong>${esc(e.name)}</strong><br><span class="mu">${esc(e.muscle_group)}</span></div>
       <button class="btn" data-a="${e.id}" aria-label="Adicionar ${esc(e.name)}">+</button></div>`).join('') || '<p class="mu">Biblioteca vazia. Cria exercícios no separador Exercícios.</p>'}</div>`;
+  ligaMedia(el);
   el.onclick = ev => {
     const t = ev.target.closest('button'); if (!t) return; const D = t.dataset;
     if (t.id === 'bc') { const me = B.self; S.novo = false; B = null; return me ? treinoM(el) : treinos(el); }
@@ -992,7 +1096,7 @@ async function carregaMembro() {
   if (!m) return null;
   const desde = new Date(Date.now() - 120 * 864e5).toISOString();
   const [pl, lg, sb, av, bl, tt, pr] = await Promise.all([
-    db.from('workout_plans').select('name, created_at, workout_days(id, label, position, workout_items(sets, reps, position, exercises(name, muscle_group, video_url)))')
+    db.from('workout_plans').select('name, created_at, workout_days(id, label, position, workout_items(sets, reps, position, exercises(name, muscle_group, video_url, equipment, media_url, media_type)))')
       .eq('member_id', m.member_id).eq('active', true).order('created_at', { ascending: false }).limit(1),
     db.from('workout_logs').select('day_id, done_at').eq('member_id', m.member_id).gte('done_at', desde).order('done_at', { ascending: false }).limit(500),
     db.from('subscriptions').select('start_date, end_date').eq('member_id', m.member_id).order('end_date', { ascending: false }).limit(1),
@@ -1182,11 +1286,12 @@ async function treinoM(el) {
     <div class="card"><div class="row"><strong id="pg"></strong><span class="mu">${esc(gruposDe(d))}</span></div><div class="bar" style="margin-top:10px"><i id="pb"></i></div></div>
     <div class="list">${d.workout_items.map((i, k) => `<div class="card ex" data-k="${k}" role="checkbox" aria-checked="false" tabindex="0">
       <span class="tick"><i class="ti ti-check" aria-hidden="true"></i></span>
-      <div style="flex:1;min-width:0"><strong>${esc(i.exercises?.name)}</strong><br><span class="mu">${esc(i.exercises?.muscle_group)}</span>
+      ${mediaThumb(i.exercises)}
+      <div style="flex:1;min-width:0"><strong>${esc(i.exercises?.name)}</strong><br><span class="mu">${esc(i.exercises?.muscle_group)}${i.exercises?.equipment ? ' · ' + esc(i.exercises.equipment) : ''}</span>
       ${/^https?:\/\//.test(i.exercises?.video_url || '') ? ` · <a href="${esc(i.exercises.video_url)}" target="_blank" rel="noopener">vídeo</a>` : ''}</div>
       <strong>${i.sets} × ${i.reps}</strong></div>`).join('')}</div>
     <p class="err" id="ce"></p><button class="btn" id="cc" style="width:100%">Concluir treino</button>${sp ? '<button class="btn ghost" id="mp" style="margin-top:10px;width:100%">Montar um plano novo</button>' : ''}`;
-  mp();
+  mp(); ligaMedia(el);
   const cards = [...el.querySelectorAll('.ex')];
   const pinta = () => {
     cards.forEach((c, k) => { c.classList.toggle('done', feitos.has(k)); c.setAttribute('aria-checked', feitos.has(k)); });
