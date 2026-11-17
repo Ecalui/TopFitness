@@ -145,6 +145,15 @@ body.is-login main{max-width:1000px}
 .lg-form.card{margin:0;padding:22px 22px 24px}
 .lg-form h1{margin:0 0 6px}
 .lg-form .btn{width:100%}
+.lg-form.card{--card:#13243a;--line:#2c4766;--tx:#eef3f9;--mu:#a6bbd0;color:var(--tx);background:rgba(15,30,50,.78);border:1px solid rgba(255,255,255,.1);border-radius:24px;box-shadow:0 24px 60px rgba(0,0,0,.45);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
+.lg-form h1{font-size:26px;color:var(--tx)}
+.lg-form>p.mu{font-size:14px;margin:0 0 18px}
+.lg-form label{font-size:14px;font-weight:600}
+.lg-form input{background:rgba(8,19,34,.7);border-color:#2c4766;border-radius:14px;color:#eef3f9}
+.lg-form input:focus{outline:0;border-color:var(--ac);box-shadow:0 0 0 3px rgba(255,138,42,.25)}
+.lg-form .err{color:#ff9a8f;min-height:1.2em}
+.lg-form .btn{min-height:50px;font-size:17px;font-weight:700;border-radius:14px}
+.lg-form .btn.ghost{background:none;color:var(--tx);border:1px solid #2c4766;font-size:15px;font-weight:500;min-height:44px}
 @media(max-height:960px) and (max-width:859px){.lg-wrap{gap:14px;min-height:0}.lg-brand img{width:min(58vw,27dvh,330px);border-radius:26px}.lg-brand p{display:none}.lg-form.card{padding:16px 18px 18px}}
 @media(min-width:860px){.lg-wrap{grid-template-columns:1fr 410px;gap:56px;align-items:center}.lg-brand img{width:min(100%,460px)}}
 .splash{position:fixed;inset:0;z-index:50;display:grid;place-content:center;justify-items:center;gap:16px;background:radial-gradient(700px 420px at 15% 10%,rgba(31,111,194,.5),transparent 60%),radial-gradient(700px 420px at 90% 95%,rgba(255,138,42,.4),transparent 60%),#0a1626;pointer-events:none;animation:spl 2.1s ease forwards}
