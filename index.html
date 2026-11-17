@@ -252,6 +252,7 @@ a.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;text
 html{overscroll-behavior-y:contain}
 body{overflow-x:hidden}
 @supports(overflow:clip){body{overflow-x:clip}}
+dialog.acd{max-height:90dvh;overflow:auto}
 /* demonstrações dos exercícios */
 .mth{flex:none;width:72px;height:72px;border-radius:14px;overflow:hidden;border:1px solid var(--line);padding:0;background:var(--line);cursor:pointer}
 .mth.s{width:48px;height:48px;border-radius:10px}
@@ -503,14 +504,28 @@ async function planos(el) {
 
 // Código de entrada: 6 dígitos aleatórios seguros (sem enviesar), é a palavra-passe do aluno
 const codigo6 = () => { const a = new Uint32Array(1); do crypto.getRandomValues(a); while (a[0] >= 4294000000); return String(a[0] % 1000000).padStart(6, '0'); };
-const acessoCard = a => { if (!a) return ''; const app = location.origin + location.pathname;
-  const w = waLink(a.phone, `Bem-vindo(a) ao ${S.gym}! Para entrares no app usa o telefone ${a.phone} e o código de entrada ${a.entrada}. Guarda-o e, no primeiro acesso, muda-o em Início > A minha conta.${a.porta ? ' O teu n.º da porta é ' + a.porta + '.' : ''} App: ${app}`);
-  return `<div class="card acesso" role="status"><h3 style="margin:0 0 4px">${a.novo ? 'Novo código de entrada' : 'Membro criado'}: ${esc(a.name)}</h3>
-    <p class="mu" style="margin:0 0 10px">Mostra este código ao aluno agora. Não volta a aparecer.</p>
+const msgAcesso = a => `Bem-vindo(a) ao ${S.gym}! Para entrares no app usa o telefone ${a.phone} e o código de entrada ${a.entrada}. Guarda-o e, no primeiro acesso, muda-o em Início > A minha conta.${a.porta ? ' O teu n.º da porta é ' + a.porta + '.' : ''} App: ${location.origin + location.pathname}`;
+// O acesso abre numa janela à frente de tudo, para não passar despercebido (antes ficava no topo da lista)
+const acessoCard = a => { if (a) setTimeout(() => abreAcesso(a), 0); return ''; };
+function abreAcesso(a) {
+  document.querySelectorAll('dialog.acd').forEach(x => x.remove());
+  const w = waLink(a.phone, msgAcesso(a)), d = document.createElement('dialog'); d.className = 'mz acd';
+  d.innerHTML = `<h3 style="margin:0 0 4px">${a.novo ? 'Novo código de entrada' : 'Membro criado'}: ${esc(a.name)}</h3>
+    <p class="mu" style="margin:0 0 10px">O app <strong>não envia mensagens sozinho</strong>. Entrega o acesso ao aluno por um destes caminhos.</p>
     <div class="rg"><span class="mu">Telefone</span><strong>${esc(a.phone)}</strong></div>
     <div class="rg"><span class="mu">Código de entrada</span><strong class="cd2">${esc(a.entrada)}</strong></div>
     ${a.porta ? `<div class="rg"><span class="mu">N.º da porta</span><strong>${esc(a.porta)}</strong></div>` : ''}
-    ${w ? `<a class="btn" style="margin-top:10px" href="${esc(w)}" target="_blank" rel="noopener"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i>Enviar ao aluno por WhatsApp</a>` : ''}</div>`; };
+    ${w ? `<a class="btn" href="${esc(w)}" target="_blank" rel="noopener"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i> Enviar por WhatsApp</a>` : ''}
+    <button class="btn ghost" type="button" data-cp>Copiar mensagem</button>
+    <p class="mu" style="font-size:13px;margin:10px 0 0">O WhatsApp abre com a mensagem pronta, e tens de carregar em enviar. Este código só aparece agora: se o perderes, gera outro na ficha do aluno, em «Novo código de entrada».</p>
+    <button class="btn ghost" type="button" data-x>Fechar</button>`;
+  document.body.append(d); d.showModal(); d.onclose = () => d.remove();
+  d.onclick = async e => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.hasAttribute('data-x')) d.close();
+    if (b.hasAttribute('data-cp')) { try { await navigator.clipboard.writeText(msgAcesso(a)); b.textContent = 'Mensagem copiada'; } catch { prompt('Copia a mensagem:', msgAcesso(a)); } }
+  };
+}
 
 // Cria a conta de login com um cliente temporário (não troca a sessão do staff) e depois a ficha via RPC
 async function criarMembro(d) {
@@ -533,8 +548,9 @@ async function membros(el) {
   const flash = acessoCard(S.acesso) + (S.flash ? `<p class="ok" role="status">${esc(S.flash)}</p>` : ''); S.flash = ''; S.acesso = null;
   el.innerHTML = `${flash}<div class="row"><select id="fl" aria-label="Filtro"><option value="all">Todos</option><option value="active">Ativos</option>
       <option value="expired">Expirados</option><option value="suspended">Suspensos</option></select>
-      <button class="btn ghost" id="nm">Novo membro</button></div>
-    <input id="q" placeholder="Nome, telefone ou n.º da porta" aria-label="Pesquisar"><div id="ml"></div>
+      <button class="btn" id="nm" style="width:auto">Novo membro</button></div>
+    <input id="q" placeholder="Nome, telefone ou n.º da porta" aria-label="Pesquisar">
+    <p class="mu" style="margin:-6px 0 10px;font-size:14px">Toca num membro para abrir a ficha: novo código de entrada, mudar telefone, plano e avaliação.</p><div id="ml"></div>
     <form id="mf" class="card" hidden><h3>Novo membro</h3>
       <label>Nome<input name="name" required></label>
       <label>Telefone<input name="phone" inputmode="tel" required></label>
@@ -826,7 +842,8 @@ async function ficha(el) {
     <form id="af" class="card" hidden><h3>Nova avaliação física</h3><div class="fg">${F('weight_kg', 'Peso (kg)')}${F('height_cm', 'Altura (cm)')}${F('body_fat_pct', '% gordura')}${F('chest_cm', 'Peito (cm)')}${F('waist_cm', 'Cintura (cm)')}${F('arm_cm', 'Braço (cm)')}${F('thigh_cm', 'Coxa (cm)')}</div>
       <p class="err" id="ae"></p><button class="btn">Guardar avaliação</button></form>
     ${bl.error ? '' : corpoStaff(bl.data || [], s.pt_id === S.uid)}
-    <h3>Avaliação física</h3>${resumoAval(as.data)}`;
+    <h3>Avaliação física</h3>${resumoAval(as.data)}
+    ${mgr ? `<div class="card" style="border-color:var(--bt);margin-top:18px"><h3 style="margin:0 0 4px">Apagar aluno</h3><p class="mu" style="margin:0 0 10px;font-size:14px">Remove a conta e todo o histórico de treinos, avaliações e presenças. Só é possível se o aluno não tiver pagamentos registados.</p><button class="btn ghost" id="fd" type="button" style="color:var(--bt);border-color:var(--bt)">Apagar aluno</button></div>` : ''}`;
   S.acesso = null; S.msgF = '';
   $id('fb').onclick = () => { S.ficha = null; shell(); };
   if ($id('fn')) $id('fn').onclick = async () => {
@@ -834,6 +851,15 @@ async function ficha(el) {
     const r = await db.rpc('reset_member_access', { p_member: id });
     if (r.error || !r.data) return $id('fne').textContent = 'Não foi possível gerar o código: ' + (r.error ? r.error.message : 'sem resposta');
     S.acesso = { name: s.full_name, phone: s.phone, entrada: r.data, novo: true }; ficha(el);
+  };
+  if ($id('fd')) $id('fd').onclick = async () => {
+    const t = prompt(`Para apagar ${s.full_name} de forma definitiva, escreve APAGAR:`);
+    if (t === null) return;
+    if (t.trim().toUpperCase() !== 'APAGAR') return $id('fne').textContent = 'Nada foi apagado: tens de escrever APAGAR.';
+    $id('fd').disabled = true; $id('fne').textContent = '';
+    const r = await db.rpc('delete_member', { p_member: id });
+    if (r.error) { $id('fne').textContent = r.error.message; $id('fd').disabled = false; return; }
+    S.ficha = null; S.flash = s.full_name + ' foi apagado.'; shell();
   };
   if ($id('ft')) $id('ft').onclick = () => { $id('tf').hidden = !$id('tf').hidden; };
   if ($id('tf')) $id('tf').onsubmit = async ev => {
