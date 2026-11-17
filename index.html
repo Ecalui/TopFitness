@@ -253,6 +253,27 @@ html{overscroll-behavior-y:contain}
 body{overflow-x:hidden}
 @supports(overflow:clip){body{overflow-x:clip}}
 dialog.acd{max-height:90dvh;overflow:auto}
+/* vistas da lista de alunos */
+.vw{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin:0 0 12px}
+.vw button{min-height:40px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:inherit;font:inherit;font-size:14px;cursor:pointer}
+.vw button[aria-pressed=true]{background:var(--ac);color:var(--acx);border-color:var(--ac);font-weight:700}
+.lst{background:var(--card);border-radius:20px;overflow:hidden;margin-bottom:12px}
+.lr{display:flex;align-items:center;gap:10px;padding:10px 14px;min-height:56px;border-bottom:1px solid var(--line);cursor:pointer}
+.lr:last-child{border-bottom:0}
+.lr .dot{width:10px;height:10px;border-radius:50%;background:var(--okt);flex:none}
+.lr[data-st=expiring] .dot{background:var(--wt)}.lr[data-st=expired] .dot,.lr[data-st=suspended] .dot{background:var(--bt)}.lr[data-st=none] .dot{background:var(--mu)}
+.lr-n{flex:1;min-width:0;display:flex;flex-direction:column}
+.lr-n strong,.lr-n .mu{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lr-n .mu{font-size:13px}
+.lr-b{width:auto;min-height:40px;padding:6px 12px;font-size:14px}
+.lr-w{display:grid;place-items:center;flex:none;width:40px;height:40px;border-radius:50%;color:var(--okt);font-size:24px;text-decoration:none}
+.gh{margin:16px 2px 8px;font-size:16px}
+.mgrid{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
+.mo{background:var(--card);border-radius:20px;padding:16px 10px;display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center;cursor:pointer;border:2px solid transparent}
+.mo[data-st=expired],.mo[data-st=suspended]{border-color:var(--bt)}.mo[data-st=expiring]{border-color:var(--wt)}
+.mo .av{width:56px;height:56px;margin-bottom:4px}
+.mo strong{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.mo .mu{font-size:13px}
 /* cartões de aluno */
 .cgrid{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(280px,1fr))}
 .ca{margin:0;display:flex;flex-direction:column;gap:12px;cursor:pointer;border-left:4px solid transparent}
@@ -567,7 +588,24 @@ const cardAluno = (m, gest) => { const w = waLink(m.phone, `Olá ${(m.full_name 
     <div class="ca-h"><span class="av" aria-hidden="true">${esc(iniciais(m.full_name))}</span><div class="ca-n"><strong>${esc(m.full_name)}</strong><span class="mu">${esc(m.plan_name || 'Sem mensalidade')}</span></div><span class="tag ${m.status}">${STATE[m.status]}</span></div>
     <div class="ca-i"><span><i class="ti ti-calendar-event" aria-hidden="true"></i>${venc(m)}</span>${gest && m.code ? `<span><i class="ti ti-door-enter" aria-hidden="true"></i>Porta ${esc(m.code)}</span>` : ''}</div>
     <div class="ca-a">${w ? `<a class="btn ghost" data-x href="${esc(w)}" target="_blank" rel="noopener" aria-label="WhatsApp para ${esc(m.full_name)}"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i> WhatsApp</a>` : ''}${gest ? `<button class="btn ghost" type="button" data-r="${m.member_id}">Renovar</button>` : ''}</div></div>`; };
-const teclaCard = ev => { if (ev.key === 'Enter' && ev.target.matches('.ca')) ev.target.click(); };
+const teclaCard = ev => { if (ev.key === 'Enter' && ev.target.matches('.ca,.lr,.mo')) ev.target.click(); };
+// Vistas da lista de alunos (a escolha fica guardada neste telemóvel)
+const VISTAS = [['lista', 'Lista'], ['grupos', 'Grupos'], ['mosaico', 'Mosaico'], ['cartoes', 'Cartões']];
+const vistaGet = () => { try { return localStorage.getItem('vistaAlunos') || 'lista'; } catch { return 'lista'; } };
+const vistaSet = v => { try { localStorage.setItem('vistaAlunos', v); } catch {} };
+const linhaAluno = (m, gest) => { const w = waLink(m.phone, `Olá ${(m.full_name || '').trim().split(' ')[0]}, `), ren = gest && ['expired', 'expiring', 'none'].includes(m.status);
+  return `<div class="lr" data-f="${m.member_id}" data-st="${m.status}" tabindex="0" role="button" aria-label="Abrir ficha de ${esc(m.full_name)}"><span class="dot" aria-hidden="true"></span><div class="lr-n"><strong>${esc(m.full_name)}</strong><span class="mu">${venc(m)}</span></div><span class="tag ${m.status}">${STATE[m.status]}</span>${ren ? `<button class="btn ghost lr-b" type="button" data-r="${m.member_id}">Renovar</button>` : ''}${w ? `<a class="lr-w" data-x href="${esc(w)}" target="_blank" rel="noopener" aria-label="WhatsApp para ${esc(m.full_name)}"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i></a>` : ''}</div>`; };
+const mosAluno = m => `<div class="mo" data-f="${m.member_id}" data-st="${m.status}" tabindex="0" role="button" aria-label="Abrir ficha de ${esc(m.full_name)}"><span class="av" aria-hidden="true">${esc(iniciais(m.full_name))}</span><strong>${esc(m.full_name)}</strong><span class="mu">${venc(m)}</span><span class="tag ${m.status}">${STATE[m.status]}</span></div>`;
+const vistaHtml = (rows, gest, v) => {
+  if (v === 'cartoes') return `<div class="cgrid">${rows.map(x => cardAluno(x, gest)).join('')}</div>`;
+  if (v === 'mosaico') return `<div class="mgrid">${rows.map(mosAluno).join('')}</div>`;
+  if (v === 'grupos') { const bloco = (t, l) => l.length ? `<h3 class="gh">${t} (${l.length})</h3><div class="lst">${l.map(x => linhaAluno(x, gest)).join('')}</div>` : '';
+    return bloco('Precisam de atenção', rows.filter(x => x.status !== 'active')) + bloco('Em dia', rows.filter(x => x.status === 'active')); }
+  return `<div class="lst">${rows.map(x => linhaAluno(x, gest)).join('')}</div>`;
+};
+const vistaBarra = v => `<nav class="vw" aria-label="Vista dos alunos">${VISTAS.map(([k, n]) => `<button type="button" data-v="${k}" aria-pressed="${k === v}">${n}</button>`).join('')}</nav>`;
+const vistaLiga = (el, get, set) => { el.querySelector('.vw').onclick = ev => { const b = ev.target.closest('[data-v]'); if (!b) return; set(b.dataset.v); vistaSet(b.dataset.v); el.querySelectorAll('.vw button').forEach(x => x.setAttribute('aria-pressed', x.dataset.v === get())); }; };
+
 
 async function membros(el) {
   if (S.ficha) return ficha(el);
@@ -576,11 +614,12 @@ async function membros(el) {
     db.from('user_roles').select('user_id, profiles(full_name)').eq('role', 'pt')]);
   if (m.error) return el.innerHTML = fail(m.error);
   const flash = acessoCard(S.acesso) + (S.flash ? `<p class="ok" role="status">${esc(S.flash)}</p>` : ''); S.flash = ''; S.acesso = null;
+  let V = vistaGet();
   el.innerHTML = `${flash}<div class="row"><select id="fl" aria-label="Filtro"><option value="all">Todos (${m.data.length})</option><option value="active">Ativos (${m.data.filter(x => ['active', 'expiring'].includes(x.status)).length})</option>
       <option value="expired">Expirados (${m.data.filter(x => x.status === 'expired').length})</option><option value="suspended">Suspensos (${m.data.filter(x => x.status === 'suspended').length})</option></select>
       <button class="btn" id="nm" style="width:auto">Novo membro</button></div>
     <input id="q" placeholder="Nome, telefone ou n.º da porta" aria-label="Pesquisar">
-    <p class="mu" style="margin:-6px 0 10px;font-size:14px">Toca num membro para abrir a ficha: novo código de entrada, mudar telefone, plano e avaliação.</p><div id="ml"></div>
+    <p class="mu" style="margin:-6px 0 10px;font-size:14px">Toca num membro para abrir a ficha: novo código de entrada, mudar telefone, plano e avaliação.</p>${vistaBarra(V)}<div id="ml"></div>
     <form id="mf" class="card" hidden><h3>Novo membro</h3>
       <label>Nome<input name="name" required></label>
       <label>Telefone<input name="phone" inputmode="tel" required></label>
@@ -591,10 +630,11 @@ async function membros(el) {
     const f = $id('fl').value, q = $id('q').value.toLowerCase();
     const rows = m.data.filter(x => (f === 'all' || (f === 'active' ? ['active', 'expiring'].includes(x.status) : x.status === f))
       && `${x.full_name} ${x.phone} ${x.code}`.toLowerCase().includes(q));
-    $id('ml').innerHTML = rows.length ? `<div class="cgrid">${rows.map(x => cardAluno(x, true)).join('')}</div>` : '<p class="mu">Nenhum membro encontrado.</p>';
+    $id('ml').innerHTML = rows.length ? vistaHtml(rows, true, V) : '<p class="mu">Nenhum membro encontrado.</p>';
   };
   $id('fl').onchange = $id('q').oninput = draw;
   $id('ml').onkeydown = teclaCard;
+  vistaLiga(el, () => V, v => { V = v; draw(); });
   $id('ml').onclick = ev => { if (ev.target.closest('[data-x]')) return; const b = ev.target.closest('[data-r]'); if (b) { S.prefill = b.dataset.r; S.sec.gestao = 'faturacao'; return shell(); } const c = ev.target.closest('[data-f]'); if (c) { S.ficha = c.dataset.f; shell(); } };
   $id('nm').onclick = () => { $id('mf').hidden = !$id('mf').hidden; };
   if (S.novoM) { $id('mf').hidden = false; S.novoM = false; }
@@ -1130,7 +1170,10 @@ async function pt(el) {
   // filtro explícito: o dono também vê todos por ser gestor, mas aqui quer só os seus alunos
   const { data, error } = await db.from('member_status').select('*').eq('pt_id', S.uid).order('full_name');
   if (error) return el.innerHTML = fail(error);
-  el.innerHTML = '<h2>Os meus alunos</h2>' + (data.length ? `<div class="cgrid">${data.map(m => cardAluno(m, false)).join('')}</div>` : '<p class="mu">Ainda não tens alunos atribuídos.</p>');
+  let V = vistaGet();
+  const draw = () => { $id('pl').innerHTML = vistaHtml(data, false, V); };
+  el.innerHTML = '<h2>Os meus alunos</h2>' + (data.length ? vistaBarra(V) + '<div id="pl"></div>' : '<p class="mu">Ainda não tens alunos atribuídos.</p>');
+  if (data.length) { draw(); vistaLiga(el, () => V, v => { V = v; draw(); }); }
   el.onkeydown = teclaCard;
   el.onclick = ev => { if (ev.target.closest('[data-x]')) return; const c = ev.target.closest('[data-f]'); if (c) { S.ficha = c.dataset.f; shell(); } };
 }
